@@ -10,6 +10,8 @@ import splitMain from './split-backend/index.js';
 
 import DB from './postgres.js';
 import cookieParser from 'cookie-parser';
+import { Socket } from 'net';
+
 
 const PORT = process.env.PORT ?? 3000;
 
@@ -66,6 +68,13 @@ const main = async () => {
       }, 1000);
     }
   });
+
+  // Set a global timeout for all requests (e.g., 10s)
+
+  http.setTimeout(10 * 1000, ((socket: Socket) => {
+    console.log("⏱️ Request timed out!");
+    socket.end("HTTP/1.1 408 Request Timeout\r\n\r\n");
+  }) as unknown as () => void);
 
   http.listen(PORT);
 };
