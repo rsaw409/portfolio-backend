@@ -6,6 +6,7 @@ vi.mock('http', () => {
       return {
         on: vi.fn(),
         listen: vi.fn(),
+        setTimeout: vi.fn(),
       };
     }),
     Server: vi.fn(),
