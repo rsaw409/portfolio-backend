@@ -1,21 +1,22 @@
-import { Server } from "socket.io";
-import logger from '../@rsaw409/logger.js'
+import { Server } from 'socket.io';
+import logger from '../@rsaw409/logger.js';
 
-const addSocket = (http) => {
+const addSocket = (http, prefix) => {
   const games = {};
 
   const io = new Server(http, {
+    path: prefix,
     cors: {
       origin:
-        process.env.NODE_ENV === "production"
-          ? "https://tictoe-rsaw409.onrender.com"
-          : "http://localhost:3000",
-      methods: ["GET", "POST"],
+        process.env.NODE_ENV === 'production'
+          ? 'https://tictoe-rsaw409.onrender.com'
+          : 'http://localhost:3000',
+      methods: ['GET', 'POST'],
     },
   });
 
-  io.on("connection", function (socket) {
-    socket.on("joinGame", (data) => {
+  io.on('connection', function (socket) {
+    socket.on('joinGame', (data) => {
       const gameId = data.gameId;
       const userName = data.userName;
       const userId = socket.id;
@@ -27,32 +28,31 @@ const addSocket = (http) => {
           `${userName} - ${userId} has joined game with id ${gameId}`
         );
 
-        if (!Object.hasOwn(games, gameId))
-          games[gameId] = {};
+        if (!Object.hasOwn(games, gameId)) games[gameId] = {};
         games[gameId][userId] = userName;
       }
 
       users = io.sockets.adapter.rooms.get(gameId);
 
       if (users?.size === 2) {
-        io.sockets.in(gameId).emit("users", games[gameId]);
+        io.sockets.in(gameId).emit('users', games[gameId]);
       }
     });
 
-    socket.on("madeMove", (data) => {
+    socket.on('madeMove', (data) => {
       const gameId = data.gameId;
       const userName = data.userName;
       // const [i, j] = data.index;
       // const symbol = data.symbol;
       logger.info(`${userName} has made his move.`);
-      socket.to(gameId).emit("receivedFromServer", data);
+      socket.to(gameId).emit('receivedFromServer', data);
     });
 
-    socket.on("RestartGame", (data) => {
-      socket.to(data.gameId).emit("userRestartedGame", data);
+    socket.on('RestartGame', (data) => {
+      socket.to(data.gameId).emit('userRestartedGame', data);
     });
 
-    socket.on("LeftGame", (data) => {
+    socket.on('LeftGame', (data) => {
       socket.leave(data.gameId);
 
       try {
@@ -63,13 +63,13 @@ const addSocket = (http) => {
       } catch (error) {
         logger.error(error);
       }
-      socket.to(data.gameId).emit("userLeftGame", data);
+      socket.to(data.gameId).emit('userLeftGame', data);
     });
 
-    socket.on("disconnecting", () => {
+    socket.on('disconnecting', () => {
       for (const room of socket.rooms) {
         if (room !== socket.id) {
-          let userName = "";
+          let userName = '';
           try {
             userName = games?.[room]?.[socket.id];
             delete games?.[room]?.[socket.id];
@@ -80,7 +80,7 @@ const addSocket = (http) => {
             logger.error(error);
           }
 
-          socket.to(room).emit("userDisconnected", userName);
+          socket.to(room).emit('userDisconnected', userName);
         }
       }
     });

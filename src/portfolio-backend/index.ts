@@ -50,11 +50,7 @@ const app = express.Router();
 // cors middleware
 app.use(
   cors({
-    origin: [
-      'https://tictoe-rsaw409.onrender.com',
-      process.env.CLIENT_ADDRESS1,
-      process.env.CLIENT_ADDRESS2,
-    ],
+    origin: [process.env.CLIENT_ADDRESS1, process.env.CLIENT_ADDRESS2],
     methods: 'GET,POST,PUT,DELETE',
     credentials: true,
   })

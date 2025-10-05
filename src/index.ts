@@ -42,7 +42,7 @@ const main = async () => {
 
   app.use('/split', limiter, splitMain);
 
-  await ticToeMain(http);
+  ticToeMain(http, '/tictoe');
 
   app.use('/health', (req: Request, res: Response) => {
     res.status(200).send({ message: 'Server is Running.' });
