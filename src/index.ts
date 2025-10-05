@@ -12,7 +12,6 @@ import DB from './postgres.js';
 import cookieParser from 'cookie-parser';
 import { Socket } from 'net';
 
-
 const PORT = process.env.PORT ?? 3000;
 
 const limiter = rateLimit({
@@ -33,18 +32,15 @@ const main = async () => {
 
   app.set('trust proxy', 1);
 
-  // Apply the rate limiting middleware to all requests.
-  app.use(limiter);
-
   app.use(logger.requestLogger);
 
   app.use(cookieParser());
 
   app.use(bodyParser.json());
 
-  app.use('/portfolio', portfolioMain);
+  app.use('/portfolio', limiter, portfolioMain);
 
-  await splitMain(app);
+  app.use('/split', limiter, splitMain);
 
   await ticToeMain(http);
 
@@ -72,8 +68,8 @@ const main = async () => {
   // Set a global timeout for all requests (e.g., 10s)
 
   http.setTimeout(10 * 1000, ((socket: Socket) => {
-    console.log("⏱️ Request timed out!");
-    socket.end("HTTP/1.1 408 Request Timeout\r\n\r\n");
+    console.log('⏱️ Request timed out!');
+    socket.end('HTTP/1.1 408 Request Timeout\r\n\r\n');
   }) as unknown as () => void);
 
   http.listen(PORT);
