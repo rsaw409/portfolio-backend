@@ -85,7 +85,6 @@ app.use(function (request: Request, response: Response, next: NextFunction) {
 app.use(
   lusca.csrf({
     cookie: {
-      name: 'XSRF-TOKEN',
       options: {
         httpOnly: false,
         sameSite: 'None',

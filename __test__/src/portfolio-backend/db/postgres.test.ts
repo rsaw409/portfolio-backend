@@ -2,7 +2,7 @@ import { vi, describe, test, beforeEach, expect, Mock } from 'vitest';
 
 vi.mock('sequelize', () => {
   return {
-    Sequelize: vi.fn((connStr) => {
+    Sequelize: vi.fn(function (connStr) {
       expect(connStr).toEqual('tests-postgres');
       return {
         authenticate: vi.fn(),
@@ -37,11 +37,14 @@ vi.mock('../../../../src/portfolio-backend/db/models/project.js', () => {
   };
 });
 
-vi.mock('../../../../src/portfolio-backend/db/models/work-experience.js', () => {
-  return {
-    default: vi.fn(),
-  };
-});
+vi.mock(
+  '../../../../src/portfolio-backend/db/models/work-experience.js',
+  () => {
+    return {
+      default: vi.fn(),
+    };
+  }
+);
 
 vi.mock('../../../../src/portfolio-backend/db/models/education.js', () => {
   return {
@@ -61,14 +64,28 @@ vi.mock('../../../../src/portfolio-backend/db/models/user.js', () => {
   };
 });
 
-const { default: initializePortfolioDB } = await import('../../../../src/portfolio-backend/db/postgres.js');
+const { default: initializePortfolioDB } = await import(
+  '../../../../src/portfolio-backend/db/postgres.js'
+);
 const { Sequelize } = await import('sequelize');
-const { default: createCertificateModel } = await import('../../../../src/portfolio-backend/db/models/certificate.js');
-const { default: createProjectModel } = await import('../../../../src/portfolio-backend/db/models/project.js');
-const { default: createWorkExperienceModel } = await import('../../../../src/portfolio-backend/db/models/work-experience.js');
-const { default: createEducationModel } = await import('../../../../src/portfolio-backend/db/models/education.js');
-const { default: createSkillModel } = await import('../../../../src/portfolio-backend/db/models/skill.js');
-const { default: createUserModel } = await import('../../../../src/portfolio-backend/db/models/user.js');
+const { default: createCertificateModel } = await import(
+  '../../../../src/portfolio-backend/db/models/certificate.js'
+);
+const { default: createProjectModel } = await import(
+  '../../../../src/portfolio-backend/db/models/project.js'
+);
+const { default: createWorkExperienceModel } = await import(
+  '../../../../src/portfolio-backend/db/models/work-experience.js'
+);
+const { default: createEducationModel } = await import(
+  '../../../../src/portfolio-backend/db/models/education.js'
+);
+const { default: createSkillModel } = await import(
+  '../../../../src/portfolio-backend/db/models/skill.js'
+);
+const { default: createUserModel } = await import(
+  '../../../../src/portfolio-backend/db/models/user.js'
+);
 
 describe('TEST PortfolioDB initialization', () => {
   beforeEach(() => {

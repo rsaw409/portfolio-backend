@@ -1,5 +1,5 @@
 import { DataTypes, Optional, Sequelize, Model } from 'sequelize';
-import { WorkExperience } from '../../../types/portfolio';
+import { WorkExperience } from '../../../types/portfolio.js';
 
 interface WorkExperienceAttributes extends Optional<WorkExperience, 'id'> {}
 

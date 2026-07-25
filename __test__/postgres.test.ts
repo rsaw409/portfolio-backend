@@ -2,7 +2,7 @@ import { vi, expect, describe, test, afterEach } from 'vitest';
 
 vi.mock('sequelize', () => {
   return {
-    Sequelize: vi.fn((connStr) => {
+    Sequelize: vi.fn(function (connStr) {
       return {
         authenticate: vi.fn(),
         sync: vi.fn(({ alter, force }) => {}),

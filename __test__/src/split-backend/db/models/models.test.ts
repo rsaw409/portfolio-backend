@@ -2,7 +2,7 @@ import { vi, describe, test, expect } from 'vitest';
 
 vi.mock('sequelize', () => {
   return {
-    Sequelize: vi.fn((connStr) => {
+    Sequelize: vi.fn(function (connStr) {
       expect(connStr).toEqual('tests-postgres');
       return {
         define: vi.fn(),
@@ -19,10 +19,18 @@ vi.mock('sequelize', () => {
 });
 
 const { Sequelize } = await import('sequelize');
-const { default: createGroupModel } = await import('../../../../../src/split-backend/db/models/group.js');
-const { default: createUserModel } = await import('../../../../../src/split-backend/db/models/user.js');
-const { default: createTransactionModel } = await import('../../../../../src/split-backend/db/models/transaction.js');
-const { default: createTransactionPartModel } = await import('../../../../../src/split-backend/db/models/transactionPart.js');
+const { default: createGroupModel } = await import(
+  '../../../../../src/split-backend/db/models/group.js'
+);
+const { default: createUserModel } = await import(
+  '../../../../../src/split-backend/db/models/user.js'
+);
+const { default: createTransactionModel } = await import(
+  '../../../../../src/split-backend/db/models/transaction.js'
+);
+const { default: createTransactionPartModel } = await import(
+  '../../../../../src/split-backend/db/models/transactionPart.js'
+);
 
 describe('TEST models init', () => {
   test('tests portfolio db models init', () => {

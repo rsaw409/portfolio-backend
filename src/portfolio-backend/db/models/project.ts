@@ -1,6 +1,6 @@
 import { DataTypes, Sequelize, Model, Optional } from 'sequelize';
 
-import { Project } from '../../../types/portfolio';
+import { Project } from '../../../types/portfolio.js';
 
 interface ProjectCreationAttributes extends Optional<Project, 'id'> {}
 

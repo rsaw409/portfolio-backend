@@ -1,8 +1,8 @@
 import { body, query, validationResult } from 'express-validator';
-import { Request } from 'express-validator/lib/base.js';
-import { Response } from 'express';
+import { type Request, type Response, type NextFunction } from 'express';
 
-const errorHandler = (req: Request, res: Response, next) => {
+
+const errorHandler = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).send({ errors: errors.array() });

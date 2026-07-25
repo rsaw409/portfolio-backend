@@ -6,8 +6,8 @@ class SupaBase {
 
   constructor() {
     this.#supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_KEY
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_KEY!
     );
   }
 
@@ -25,9 +25,12 @@ class SupaBase {
     const { data: list } = await this.#supabase.storage
       .from('portfolio_images')
       .list(prefix);
-    const filesToRemove = list.map((x) => `${prefix}/${x.name}`);
-
-    await this.#supabase.storage.from('portfolio_images').remove(filesToRemove);
+    if (list?.length) {
+      const filesToRemove = list.map((x) => `${prefix}/${x.name}`);
+      await this.#supabase.storage
+        .from('portfolio_images')
+        .remove(filesToRemove);
+    }
   }
 }
 

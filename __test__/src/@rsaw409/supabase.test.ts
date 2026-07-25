@@ -28,7 +28,7 @@ vi.mock('base64-arraybuffer', () => {
   };
 });
 
-const { default: supabase } = await import('../../../src/@rsaw409/supabase');
+const { default: supabase } = await import('../../../src/@rsaw409/supabase.js');
 
 describe('TESTS supabase funtions', () => {
   test('uploadFileToSupabse', async () => {

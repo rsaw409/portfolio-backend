@@ -65,7 +65,13 @@ const getUserIdFromEmail = async (email: string) => {
   return res[0]?.id;
 };
 
-const findOrCreateUser = async ({ email, name }) => {
+const findOrCreateUser = async ({
+  email,
+  name,
+}: {
+  email: string;
+  name: string;
+}) => {
   return psql.models.users.findOrCreate({
     where: { user_email: email },
     defaults: {

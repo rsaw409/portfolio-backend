@@ -1,5 +1,5 @@
 import { DataTypes, Sequelize, Model, Optional } from 'sequelize';
-import { Certificate } from '../../../types/portfolio';
+import { Certificate } from '../../../types/portfolio.js';
 
 interface CertificateCreationAttributes extends Optional<Certificate, 'id'> {}
 

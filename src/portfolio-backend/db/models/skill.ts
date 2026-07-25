@@ -1,5 +1,5 @@
 import { DataTypes, Sequelize, Model, Optional } from 'sequelize';
-import { Skill } from '../../../types/portfolio';
+import { Skill } from '../../../types/portfolio.js';
 
 interface SkillCreationAttributes extends Optional<Skill, 'id'> {}
 

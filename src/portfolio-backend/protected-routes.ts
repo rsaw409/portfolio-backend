@@ -36,8 +36,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import { whitelist, fileValidation } from './utils/file-validation.js';
 
-const GOOGLE_CLIENT_ID: string = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET: string = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_CLIENT_ID: string | undefined = process.env.GOOGLE_CLIENT_ID!;
+const GOOGLE_CLIENT_SECRET: string | undefined = process.env.GOOGLE_CLIENT_SECRET!;
 
 const addRoutes = (app: Router) => {
   passport.use(

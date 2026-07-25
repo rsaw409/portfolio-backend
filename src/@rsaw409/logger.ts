@@ -2,6 +2,7 @@ import winston from 'winston';
 import os from 'os';
 import { nanoid } from 'nanoid';
 import responseTime from 'response-time';
+import { Request, Response } from 'express';
 
 class Logger {
   #logger: winston.Logger;
@@ -37,15 +38,15 @@ class Logger {
     });
   }
 
-  info(message) {
+  info(message: string) {
     this.#logger.info(message);
   }
 
-  error(message) {
+  error(message: any) {
     this.#logger.error(message);
   }
 
-  requestLogger = responseTime((req, res, time) => {
+  requestLogger = responseTime((req: Request, res: Response, time) => {
     let ignoreUrls = ['/health', '/db_health'];
     if (!ignoreUrls.includes(req.originalUrl)) {
       let msg = `${req.method} ${req.originalUrl} ${res.statusCode}`;

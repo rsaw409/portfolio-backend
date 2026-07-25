@@ -1,5 +1,5 @@
 import { DataTypes, Optional, Sequelize, Model } from 'sequelize';
-import { Education } from '../../../types/portfolio';
+import { Education } from '../../../types/portfolio.js';
 
 interface EducationCreationAttributes extends Optional<Education, 'id'> {}
 

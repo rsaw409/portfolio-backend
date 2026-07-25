@@ -324,11 +324,11 @@ const addOrUpdateUser = async (req: Request, res: Response) => {
       profile_url = `https://cywiacstqjeecqodaozz.supabase.co/storage/v1/object/public/portfolio_images/${req.body.user_email}/${user_id}_${timestamp}`;
     }
 
-    const user = {
+    const user: User = {
       name: req.body.name,
       user_email: req.body.user_email,
       about: req.body.about,
-      profile_url: profile_url,
+      profile_url: profile_url!,
       social_links: {
         github_url: req.body.github_url,
         linkedin_url: req.body.linkedin_url,

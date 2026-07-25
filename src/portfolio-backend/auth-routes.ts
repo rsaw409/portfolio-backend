@@ -32,9 +32,9 @@ app.get('/logout', (req: Request, res: Response, next: NextFunction) => {
       return next(err);
     }
     if (req.headers.referer?.includes('onrender')) {
-      res.redirect(process.env.CLIENT_ADDRESS1);
+      res.redirect(process.env.CLIENT_ADDRESS1!);
     } else {
-      res.redirect(process.env.CLIENT_ADDRESS2);
+      res.redirect(process.env.CLIENT_ADDRESS2!);
     }
   });
 });
