@@ -56,7 +56,6 @@
     "@types/sequelize": "^4.28.20",
     "@typescript-eslint/eslint-plugin": "^8.5.0",
     "@typescript-eslint/parser": "^8.5.0",
-    "@vitest/coverage-istanbul": "^4.1.10",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.10.0",
     "eslint-config-prettier": "^9.1.0",
@@ -70,5 +69,9 @@
     "tsx": "^4.19.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3": true
   }
 }
