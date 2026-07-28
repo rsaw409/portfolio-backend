@@ -1,2 +1,7 @@
 node_modules
-dist/
+dist
+.git
+.gitignore
+Dockerfile
+npm-debug.log
+.env
