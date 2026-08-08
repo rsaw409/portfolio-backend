@@ -3,16 +3,16 @@ import express, { Application, Request, Response } from 'express';
 import logger from '../src/@rsaw409/logger.js';
 import bodyParser from 'body-parser';
 import { rateLimit } from 'express-rate-limit';
-import { createServer, Server } from 'http';
+import { createServer, Server } from 'node:http';
 import portfolioMain from './portfolio-backend/index.js';
 import ticToeMain from './tic-toe-backend/index.js';
 import splitMain from './split-backend/index.js';
 
 import DB from './postgres.js';
 import cookieParser from 'cookie-parser';
-import { Socket } from 'net';
+import { Socket } from 'node:net';
 
-const PORT = Number(process.env.PORT) ?? 3000;
+const PORT: number = Number(process.env.PORT) || 3000;
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -77,4 +77,4 @@ const main = async () => {
   });
 };
 
-main();
+await main();

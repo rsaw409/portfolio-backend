@@ -1,9 +1,8 @@
-import express from 'express';
 import passport from 'passport';
 import cookieSession from 'cookie-session';
 import lusca from 'lusca';
 import cors from 'cors';
-import { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 
 import { addRoutes } from './routes.js';
 import authRoute from './auth-routes.js';

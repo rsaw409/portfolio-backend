@@ -1,4 +1,4 @@
-import * as crypto from 'crypto';
+import * as crypto from 'node:crypto';
 
 class MyCrypto {
   #algorithm = 'aes-256-gcm';

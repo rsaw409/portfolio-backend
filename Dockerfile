@@ -5,9 +5,9 @@ WORKDIR /app
 
 COPY package*.json ./
 
-# Prevent Husky from running during install
+# Prevent Husky (and any other lifecycle scripts) from running during install
 RUN npm pkg delete scripts.prepare && \
-    HUSKY=0 npm ci
+    HUSKY=0 npm ci --ignore-scripts
 
 COPY . .
 
@@ -21,9 +21,13 @@ WORKDIR /app
 COPY package*.json ./
 
 RUN npm pkg delete scripts.prepare && \
-    npm ci --omit=dev
+    npm ci --omit=dev --ignore-scripts
 
-COPY --from=build /app/dist ./dist
+# Copy build output with correct ownership for non-root user
+COPY --chown=node:node --from=build /app/dist ./dist
+
+# Run as non-root user (node:lts-slim already ships a 'node' user)
+USER node
 
 EXPOSE 3000
 

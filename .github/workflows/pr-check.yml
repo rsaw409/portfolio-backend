@@ -15,7 +15,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install dependencies
-        run: npm install
+        run: npm ci --ignore-scripts
       - name: Extract Coverage Summary
         id: coverage
         run: |

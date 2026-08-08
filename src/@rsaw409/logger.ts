@@ -1,11 +1,11 @@
 import winston from 'winston';
-import os from 'os';
+import os from 'node:os';
 import { nanoid } from 'nanoid';
 import responseTime from 'response-time';
 import { Request, Response } from 'express';
 
 class Logger {
-  #logger: winston.Logger;
+  readonly #logger: winston.Logger;
 
   constructor() {
     this.#logger = winston.createLogger({

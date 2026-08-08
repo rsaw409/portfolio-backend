@@ -17,7 +17,7 @@ const fileValidation = async (
     const meta = await fileTypeFromBuffer(req.file.buffer);
 
     if (!meta) {
-      throw new Error('Could not find file type')
+      throw new Error('Could not find file type');
     }
 
     if (!whitelist.includes(meta.mime)) {

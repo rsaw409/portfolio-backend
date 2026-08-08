@@ -14,7 +14,9 @@ const checkAuthenticated = async (
         .status(403)
         .send({ message: 'Could not identify you as authorized user.' });
     }
-    const user_id_from_query: number = parseInt(req.query.user_id as string);
+    const user_id_from_query: number = Number.parseInt(
+      req.query.user_id as string
+    );
     const userId = await getUserIdFromEmail(user.emails[0]?.value);
 
     // Authorization validation
