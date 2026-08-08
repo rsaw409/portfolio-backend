@@ -12,7 +12,7 @@ import DB from './postgres.js';
 import cookieParser from 'cookie-parser';
 import { Socket } from 'net';
 
-const PORT = process.env.PORT ?? 3000;
+const PORT = Number(process.env.PORT) ?? 3000;
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -72,7 +72,9 @@ const main = async () => {
     socket.end('HTTP/1.1 408 Request Timeout\r\n\r\n');
   }) as unknown as () => void);
 
-  http.listen(PORT);
+  http.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+  });
 };
 
 main();
