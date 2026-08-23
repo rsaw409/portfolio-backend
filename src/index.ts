@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express, { Application, Request, Response } from 'express';
 import logger from '../src/@rsaw409/logger.js';
 import bodyParser from 'body-parser';

@@ -334,6 +334,7 @@ const addOrUpdateUser = async (req: Request, res: Response) => {
         blog_url: req.body.blog_url,
         twitter_url: req.body.twitter_url,
         stackoverflow_url: req.body.stackoverflow_url,
+        leetcode_url: req.body.leetcode_url,
       },
     };
 
