@@ -68,12 +68,12 @@ const main = async () => {
   // Set a global timeout for all requests (e.g., 10s)
 
   http.setTimeout(10 * 1000, ((socket: Socket) => {
-    console.log('⏱️ Request timed out!');
+    logger.info('⏱️ Request timed out!');
     socket.end('HTTP/1.1 408 Request Timeout\r\n\r\n');
   }) as unknown as () => void);
 
   http.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+    logger.info(`Server running on port ${PORT}`);
   });
 };
 

@@ -1,7 +1,6 @@
 import { body, query, validationResult } from 'express-validator';
 import { type Request, type Response, type NextFunction } from 'express';
 
-
 const errorHandler = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {

@@ -127,8 +127,7 @@ const getuser = async (req: Request, res: Response) => {
   try {
     const user_email: string = String(req.query.user_email);
     const name: string | undefined = req.headers.name as unknown as
-      | string
-      | undefined;
+      string | undefined;
     const user: User = await getuserFromDb(user_email, name);
     if (user === null) {
       throw new Error('user not found');
