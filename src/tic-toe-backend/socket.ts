@@ -58,7 +58,11 @@ const addSocket = (httpServer: HttpServer, path: string): void => {
   const games: Games = Object.create(null);
   const io = createSocketServer(httpServer, path);
 
-  const addPlayer = (gameId: string, socketId: string, userName: string): void => {
+  const addPlayer = (
+    gameId: string,
+    socketId: string,
+    userName: string
+  ): void => {
     games[gameId] ??= Object.create(null);
     games[gameId][socketId] = userName;
   };
@@ -87,7 +91,9 @@ const addSocket = (httpServer: HttpServer, path: string): void => {
 
       socket.join(gameId);
       addPlayer(gameId, socket.id, userName);
-      logger.info(`${userName} - ${socket.id} has joined game with id ${gameId}`);
+      logger.info(
+        `${userName} - ${socket.id} has joined game with id ${gameId}`
+      );
 
       if (getPlayerCount(gameId) === MAX_PLAYERS_PER_GAME) {
         io.in(gameId).emit('users', games[gameId]);
