@@ -180,13 +180,13 @@ const getAllTransactionInGroup = async ({
 
   const query =
     (user_id ? `select * from( ` : ` `) +
-    `select group_id, group_name, user_id, user_name, transaction_id, transaction_title, transaction_amount, transaction_date,
+    `select group_id, group_name, user_id, user_name, transaction_id, transaction_title, transaction_amount, transaction_date, transaction_category,
   jsonb_agg(jsonb_build_object('user_name' , distribution_name, 'user_id' , distribution_user_id, 'amount', distrubution_amount)) as distributions
   from (
   select 
   E.id as group_id, E.name as group_name,
   D.id as user_id, D.name as user_name,
-  B.id as transaction_id, B.title as transaction_title, B.amount as transaction_amount, B.created_at as transaction_date,
+  B.id as transaction_id, B.title as transaction_title, B.amount as transaction_amount, B.created_at as transaction_date, B.category as transaction_category,
   A.amount as distrubution_amount,
   A.user_id as distribution_user_id,
   C.name as distribution_name from
@@ -212,7 +212,7 @@ const getAllTransactionInGroup = async ({
         : `and B.category is null`
       : ``) +
     `) F
-  group by 1,2,3,4,5,6,7,8` +
+  group by 1,2,3,4,5,6,7,8,9` +
     (user_id
       ? `) G where 
     EXISTS (
