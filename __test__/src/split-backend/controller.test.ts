@@ -68,7 +68,9 @@ const {
 } = await import('../../../src/split-backend/db/queries/transaction.js');
 
 const { default: crypto } = await import('../../../src/@rsaw409/crypto.js');
-const { send_push_notification } = await import('../../../src/split-backend/utils/send_notification.js');
+const { ErrorMessage } = await import('../../../src/@rsaw409/constant.js');
+const { send_push_notification } =
+  await import('../../../src/split-backend/utils/send_notification.js');
 
 const {
   createGroup,
@@ -299,15 +301,38 @@ describe('Testing Controllers', () => {
     let req = {
       body: { from: '1', to: '1', amount: 100 },
     } as any as Request;
+    (savePaymentInDB as Mock).mockImplementation(() => {
+      return { result: { id: 1 }, replayed: false };
+    });
     await savePayment(req, res);
     expect(savePaymentInDB).toHaveBeenCalledWith({
       from: '1',
       to: '1',
       amount: 100,
+      idempotency_key: undefined,
     });
     expect(send_push_notification).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.send).toHaveBeenCalled();
+    expect(res.send).toHaveBeenCalledWith({ id: 1 });
+  });
+
+  test('savePayment should replay the stored response without notifying', async () => {
+    let req = {
+      body: { from: '1', to: '1', amount: 100, idempotency_key: ' key-1 ' },
+    } as any as Request;
+    (savePaymentInDB as Mock).mockImplementation(() => {
+      return { result: { id: 7 }, replayed: true };
+    });
+    await savePayment(req, res);
+    expect(savePaymentInDB).toHaveBeenCalledWith({
+      from: '1',
+      to: '1',
+      amount: 100,
+      idempotency_key: 'key-1',
+    });
+    expect(send_push_notification).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith({ id: 7 });
   });
 
   test('savePayments should return error if req.body has incorrect schema in array', async () => {
@@ -336,19 +361,74 @@ describe('Testing Controllers', () => {
 
   test('savePayments should return success', async () => {
     let req = {
-      body: [{ from: '1', to: '2', amount: 100 }],
+      body: [{ from: '1', to: '2', amount: 100, idempotency_key: ' pay-1 ' }],
     } as any as Request;
+    (savePaymentsInDB as Mock).mockImplementation(() => {
+      return { result: [{ id: 1 }], written: [true] };
+    });
     await savePayments(req, res);
     expect(savePaymentsInDB).toHaveBeenCalledWith([
       {
         from: '1',
         to: '2',
         amount: 100,
+        idempotency_key: 'pay-1',
       },
     ]);
     expect(send_push_notification).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.send).toHaveBeenCalled();
+    expect(res.send).toHaveBeenCalledWith([{ id: 1 }]);
+  });
+
+  test('savePayments rejects a half-keyed batch', async () => {
+    let req = {
+      body: [
+        { from: '1', to: '2', amount: 100, idempotency_key: 'pay-1' },
+        { from: '2', to: '3', amount: 50 },
+      ],
+    } as any as Request;
+    await savePayments(req, res);
+    expect(savePaymentsInDB).not.toHaveBeenCalled();
+    expect(send_push_notification).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: ErrorMessage.IdempotencyKeyMissingInBatch,
+    });
+  });
+
+  test('savePayments notifies only the payments it actually wrote', async () => {
+    let req = {
+      body: [
+        { from: '1', to: '2', amount: 100, idempotency_key: 'pay-1' },
+        { from: '2', to: '3', amount: 50, idempotency_key: 'pay-2' },
+      ],
+    } as any as Request;
+    (savePaymentsInDB as Mock).mockImplementation(() => {
+      return { result: [{ id: 1 }, { id: 2 }], written: [false, true] };
+    });
+    await savePayments(req, res);
+    expect(send_push_notification).toHaveBeenCalledTimes(1);
+    expect(send_push_notification).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'INR 50' })
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }]);
+  });
+
+  test('savePayments sends no notification when the whole batch is a replay', async () => {
+    let req = {
+      body: [
+        { from: '1', to: '2', amount: 100, idempotency_key: 'pay-1' },
+        { from: '2', to: '3', amount: 50, idempotency_key: 'pay-2' },
+      ],
+    } as any as Request;
+    (savePaymentsInDB as Mock).mockImplementation(() => {
+      return { result: [{ id: 1 }, { id: 2 }], written: [false, false] };
+    });
+    await savePayments(req, res);
+    expect(send_push_notification).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }]);
   });
 
   test('saveTransaction should return error if payload is incorrect', async () => {
@@ -412,16 +492,45 @@ describe('Testing Controllers', () => {
         by: '1',
         title: 'test',
         totalAmount: 100,
+        idempotency_key: 'expense-1',
         transactionParts: [
           { user_id: 1, amount: 20 },
           { user_id: 2, amount: 80 },
         ],
       },
     } as any as Request;
+    (saveTransactionInDB as Mock).mockImplementation(() => {
+      return { result: { id: 1 }, replayed: false };
+    });
     await saveTransaction(req, res);
-    expect(saveTransactionInDB).toHaveBeenCalled();
+    expect(saveTransactionInDB).toHaveBeenCalledWith({
+      ...req.body,
+      idempotency_key: 'expense-1',
+    });
     expect(send_push_notification).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.send).toHaveBeenCalled();
+    expect(res.send).toHaveBeenCalledWith({ id: 1 });
+  });
+
+  test('saveTransaction replay returns the original response and no notification', async () => {
+    let req = {
+      body: {
+        by: '1',
+        title: 'test',
+        totalAmount: 100,
+        idempotency_key: 'expense-1',
+        transactionParts: [
+          { user_id: 1, amount: 20 },
+          { user_id: 2, amount: 80 },
+        ],
+      },
+    } as any as Request;
+    (saveTransactionInDB as Mock).mockImplementation(() => {
+      return { result: { id: 42 }, replayed: true };
+    });
+    await saveTransaction(req, res);
+    expect(send_push_notification).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith({ id: 42 });
   });
 });

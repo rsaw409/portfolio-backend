@@ -49,11 +49,25 @@ class DBConnection {
     await connectToPortfolioDB(this.#sequelize, this.portfolio_backend);
     await connectToSplitDB(this.#sequelize, this.split_backend);
     await this.#sequelize.sync({ alter: alter });
+    await this.#ensureIdempotency();
     await this.#createIndexes({ alter: alter });
 
     logger.info('Database Sync Done for all DB');
 
     DBConnection.#isInitialized = true;
+  }
+
+  // Unlike #createIndexes this is not gated on `alter`, because
+  // sync({ alter: false }) does not add columns to a table that already
+  // exists, and duplicate-write protection depends on this index being there.
+  async #ensureIdempotency() {
+    const psql: Sequelize = this.#sequelize;
+    await psql.query(
+      `alter table ${this.split_backend}.transactions add column if not exists idempotency_key varchar(255)`
+    );
+    await psql.query(
+      `create unique index if not exists transactions_idempotency_key on ${this.split_backend}.transactions (idempotency_key)`
+    );
   }
 
   async #createIndexes({ alter = false }) {

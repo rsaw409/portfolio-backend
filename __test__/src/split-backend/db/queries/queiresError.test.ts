@@ -5,6 +5,7 @@ vi.mock('sequelize', () => {
     QueryTypes: {
       SELECT: 'SELECT',
     },
+    UniqueConstraintError: class extends Error {},
   };
 });
 
@@ -29,29 +30,42 @@ vi.mock('../../../../../src/postgres.js', () => {
   };
 });
 
-const { getGroup, createGroup, getOverviewDataInGroup } = await import('../../../../../src/split-backend/db/queries/group.js');
-const { getAllUsersInGroup, createUser } = await import('../../../../../src/split-backend/db/queries/user.js');
-const { saveTransaction, savePayment, getAllTransactionInGroup, savePayments } = await import('../../../../../src/split-backend/db/queries/transaction.js');
+const { getGroup, createGroup, getOverviewDataInGroup } =
+  await import('../../../../../src/split-backend/db/queries/group.js');
+const { getAllUsersInGroup, createUser } =
+  await import('../../../../../src/split-backend/db/queries/user.js');
+const { saveTransaction, savePayment, getAllTransactionInGroup, savePayments } =
+  await import('../../../../../src/split-backend/db/queries/transaction.js');
 
 describe('TEST split-backend queries', () => {
   test('TEST GET Group ', async () => {
-    await expect(getGroup({ group_id: 12 })).rejects.toThrow('DB not initialized');
+    await expect(getGroup({ group_id: 12 })).rejects.toThrow(
+      'DB not initialized'
+    );
   });
 
   test('TEST Create Group ', async () => {
-    await expect(createGroup({ name: 'test' })).rejects.toThrow('DB not initialized');
+    await expect(createGroup({ name: 'test' })).rejects.toThrow(
+      'DB not initialized'
+    );
   });
 
   test('TEST getOverviewDataInGroup', async () => {
-    await expect(getOverviewDataInGroup({ group_id: 2 })).rejects.toThrow('DB not initialized');
+    await expect(getOverviewDataInGroup({ group_id: 2 })).rejects.toThrow(
+      'DB not initialized'
+    );
   });
 
   test('TEST getAllUsersInGroup', async () => {
-    await expect(getAllUsersInGroup({ group_id: 1 })).rejects.toThrow('DB not initialized');
+    await expect(getAllUsersInGroup({ group_id: 1 })).rejects.toThrow(
+      'DB not initialized'
+    );
   });
 
   test('TEST createUser', async () => {
-    await expect(createUser({ name: 'test', group_id: 1 })).rejects.toThrow('DB not initialized');
+    await expect(createUser({ name: 'test', group_id: 1 })).rejects.toThrow(
+      'DB not initialized'
+    );
   });
 
   test('TEST saveTransaction', async () => {

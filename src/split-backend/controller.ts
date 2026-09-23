@@ -18,6 +18,10 @@ import {
 import crypto from '../@rsaw409/crypto.js';
 import { send_push_notification } from './utils/send_notification.js';
 import {
+  validateIdempotentBatch,
+  validateIdempotentPayload,
+} from './utils/idempotency-key.js';
+import {
   createGroupPayload,
   createUserPayload,
   getAllTransactionInGroupPayload,
@@ -126,13 +130,19 @@ const saveTransaction = async (
       throw new Error(`distribution is not matching with totalAmount.`);
     }
 
-    const response = await saveTransactionInDB(req.body);
-    send_push_notification({
-      groupName: req.body.groupName,
-      headings: 'New Expense',
-      title: req.body.title,
-    });
-    return res.status(200).send(response);
+    const { result, replayed } = await saveTransactionInDB(
+      validateIdempotentPayload(req.body)
+    );
+    // A replay wrote nothing, so notifying again would announce an expense
+    // that does not exist.
+    if (!replayed) {
+      send_push_notification({
+        groupName: req.body.groupName,
+        headings: 'New Expense',
+        title: req.body.title,
+      });
+    }
+    return res.status(200).send(result);
   } catch (error: unknown) {
     logger.error(error);
     let message = ErrorMessage.Unknown;
@@ -152,13 +162,17 @@ const savePayment = async (
     if (!requiredFields.every((each) => Object.keys(req.body).includes(each))) {
       throw new Error(`Required Field missing ${requiredFields}`);
     }
-    const response = await savePaymentInDB(req.body);
-    send_push_notification({
-      groupName: req.body.groupName,
-      headings: 'New Payment',
-      title: `INR ${req.body.amount}`,
-    });
-    return res.status(200).send(response);
+    const { result, replayed } = await savePaymentInDB(
+      validateIdempotentPayload(req.body)
+    );
+    if (!replayed) {
+      send_push_notification({
+        groupName: req.body.groupName,
+        headings: 'New Payment',
+        title: `INR ${req.body.amount}`,
+      });
+    }
+    return res.status(200).send(result);
   } catch (error: unknown) {
     logger.error(error);
     let message = ErrorMessage.Unknown;
@@ -188,16 +202,22 @@ const savePayments = async (
         throw new Error(`Required Field missing ${requiredFields}`);
       }
     }
-    const response = await savePaymentsInDB(req.body);
+    const { result, written } = await savePaymentsInDB(
+      validateIdempotentBatch(req.body)
+    );
 
-    req.body.forEach((e) => {
-      send_push_notification({
-        groupName: e.groupName,
-        headings: 'New Payment',
-        title: `INR ${e.amount}`,
-      });
+    // Only the payments this call actually wrote; the rest already notified
+    // when they were first written.
+    req.body.forEach((e, index) => {
+      if (written[index]) {
+        send_push_notification({
+          groupName: e.groupName,
+          headings: 'New Payment',
+          title: `INR ${e.amount}`,
+        });
+      }
     });
-    return res.status(200).send(response);
+    return res.status(200).send(result);
   } catch (error: unknown) {
     logger.error(error);
     let message = ErrorMessage.Unknown;

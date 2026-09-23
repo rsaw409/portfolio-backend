@@ -24,6 +24,13 @@ const createTransactionModel = (sequelize: Sequelize, schema: string) => {
       category: {
         type: DataTypes.STRING,
       },
+      // One key per written row, supplied by the client. The unique index on
+      // this column is what stops a retry writing the same expense twice.
+      // Postgres treats NULLs as distinct, so clients that send no key are
+      // unaffected and keep the old at-least-once behaviour.
+      idempotency_key: {
+        type: DataTypes.STRING,
+      },
     },
     {
       schema,

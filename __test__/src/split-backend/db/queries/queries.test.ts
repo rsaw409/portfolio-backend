@@ -5,6 +5,7 @@ vi.mock('sequelize', () => {
     QueryTypes: {
       SELECT: 'SELECT',
     },
+    UniqueConstraintError: class extends Error {},
   };
 });
 
@@ -90,15 +91,12 @@ vi.mock('../../../../../src/postgres.js', () => {
   };
 });
 
-const { getGroup, createGroup, getOverviewDataInGroup } = await import(
-  '../../../../../src/split-backend/db/queries/group.js'
-);
-const { getAllUsersInGroup, createUser } = await import(
-  '../../../../../src/split-backend/db/queries/user.js'
-);
-const { saveTransaction, savePayment, getAllTransactionInGroup, savePayments } = await import(
-  '../../../../../src/split-backend/db/queries/transaction.js'
-);
+const { getGroup, createGroup, getOverviewDataInGroup } =
+  await import('../../../../../src/split-backend/db/queries/group.js');
+const { getAllUsersInGroup, createUser } =
+  await import('../../../../../src/split-backend/db/queries/user.js');
+const { saveTransaction, savePayment, getAllTransactionInGroup, savePayments } =
+  await import('../../../../../src/split-backend/db/queries/transaction.js');
 
 describe('TEST split-backend queries', () => {
   test('TEST GET Group ', async () => {

@@ -1,8 +1,11 @@
 import logger from '../../../@rsaw409/logger.js';
+import { ErrorMessage } from '../../../@rsaw409/constant.js';
 import DB from '../../../postgres.js';
-import { QueryTypes } from 'sequelize';
+import { Model, QueryTypes, UniqueConstraintError } from 'sequelize';
 import {
   getAllTransactionInGroupPayload,
+  IdempotentBatchResult,
+  IdempotentResult,
   savePaymentPayload,
   saveTransactionPayload,
 } from '../../../types/split.js';
@@ -10,113 +13,151 @@ import {
 const sequelize = DB.getSequelize();
 const schemaname = DB.split_backend;
 
-const saveTransaction = async (payload: saveTransactionPayload) => {
+/**
+ * The transaction already written under this key, if there is one. Undefined
+ * when the key is new, or when the client sent no key at all.
+ */
+const findExistingTransaction = async (
+  idempotency_key?: string
+): Promise<Model | undefined> => {
+  if (!idempotency_key) return undefined;
+  const row = await sequelize.models.Transaction.findOne({
+    where: { idempotency_key },
+  });
+  return row ?? undefined;
+};
+
+const saveTransaction = async (
+  payload: saveTransactionPayload
+): Promise<IdempotentResult<Model>> => {
+  const idempotencyKey = payload.idempotency_key;
   try {
     if (!sequelize) {
       throw new Error('DB not initialized');
-    } else {
-      return sequelize.transaction(async (t) => {
-        const transaction = await sequelize.models.Transaction.create(
-          {
-            by: payload.by,
-            title: payload.title,
-            amount: payload.totalAmount,
-          },
-          { transaction: t }
-        );
+    }
 
-        const transaction_parts = payload.transactionParts.map((e: any) => {
-          return {
-            ...e,
-            transaction_id: transaction.dataValues.id,
-          };
-        });
+    const result = await sequelize.transaction(async (t) => {
+      const transaction = await sequelize.models.Transaction.create(
+        {
+          by: payload.by,
+          title: payload.title,
+          amount: payload.totalAmount,
+          idempotency_key: idempotencyKey,
+        },
+        { transaction: t }
+      );
 
-        await sequelize.models.TransactionPart.bulkCreate(transaction_parts, {
-          transaction: t,
-        });
-
-        return transaction;
+      const transaction_parts = payload.transactionParts.map((e: any) => {
+        return {
+          ...e,
+          transaction_id: transaction.dataValues.id,
+        };
       });
-    }
+
+      await sequelize.models.TransactionPart.bulkCreate(transaction_parts, {
+        transaction: t,
+      });
+
+      return transaction;
+    });
+    return { result, replayed: false };
   } catch (error) {
-    logger.error(error);
-    if (error instanceof Error) {
-      throw new Error(error.message);
+    // The index rejected the key, so this expense is already recorded and our
+    // write rolled back whole. Return the row that is already there.
+    if (error instanceof UniqueConstraintError) {
+      const winner = await findExistingTransaction(idempotencyKey);
+      if (winner) return { result: winner, replayed: true };
     }
+    logger.error(error);
+    throw error instanceof Error ? error : new Error(ErrorMessage.Unknown);
   }
 };
 
-const savePayment = async (payload: savePaymentPayload) => {
+/**
+ * Writes one payment, or returns the payment already written under its key.
+ * Its own transaction, so a conflict rolls back only this payment.
+ */
+const writePayment = async (
+  payment: savePaymentPayload
+): Promise<IdempotentResult<Model>> => {
+  const idempotencyKey = payment.idempotency_key;
   try {
-    if (!sequelize) {
-      throw new Error('DB not initialized');
-    }
-    return sequelize.transaction(async (t) => {
+    const result = await sequelize.transaction(async (t) => {
       const transaction = await sequelize.models.Transaction.create(
         {
-          by: payload.from,
+          by: payment.from,
           title: 'payment',
-          amount: payload.amount,
+          amount: payment.amount,
           category: 'payment',
+          idempotency_key: idempotencyKey,
         },
         { transaction: t }
       );
 
       await sequelize.models.TransactionPart.create(
         {
-          user_id: payload.to,
-          amount: payload.amount,
+          user_id: payment.to,
+          amount: payment.amount,
           transaction_id: transaction.dataValues.id,
         },
         { transaction: t }
       );
       return transaction;
     });
+    return { result, replayed: false };
   } catch (error) {
-    logger.error(error);
-    if (error instanceof Error) {
-      throw new Error(error.message);
+    if (error instanceof UniqueConstraintError) {
+      const winner = await findExistingTransaction(idempotencyKey);
+      if (winner) return { result: winner, replayed: true };
     }
+    throw error;
   }
 };
 
-const savePayments = async (payments: Array<savePaymentPayload>) => {
+const savePayment = async (
+  payload: savePaymentPayload
+): Promise<IdempotentResult<Model>> => {
+  try {
+    if (!sequelize) {
+      throw new Error('DB not initialized');
+    }
+    return await writePayment(payload);
+  } catch (error) {
+    logger.error(error);
+    throw error instanceof Error ? error : new Error(ErrorMessage.Unknown);
+  }
+};
+
+/**
+ * Each payment is saved on its own and is idempotent on its own key, so a
+ * batch repeating an earlier one writes only what is new.
+ *
+ * The batch is therefore not atomic: if a payment fails for a reason other
+ * than its key, the ones before it stay committed. The keys are what make that
+ * safe — retrying the same batch replays those and writes the rest — so the
+ * client must keep its keys until the call succeeds.
+ */
+const savePayments = async (
+  payments: Array<savePaymentPayload>
+): Promise<IdempotentBatchResult<Model[]>> => {
   try {
     if (!sequelize) {
       throw new Error('DB not initialized');
     }
 
-    return sequelize.transaction(async (t) => {
-      const tmp = [];
-      for (let payment of payments) {
-        const transaction = await sequelize.models.Transaction.create(
-          {
-            by: payment.from,
-            title: 'payment',
-            amount: payment.amount,
-            category: 'payment',
-          },
-          { transaction: t }
-        );
+    const result: Model[] = [];
+    const written: boolean[] = [];
 
-        await sequelize.models.TransactionPart.create(
-          {
-            user_id: payment.to,
-            amount: payment.amount,
-            transaction_id: transaction.dataValues.id,
-          },
-          { transaction: t }
-        );
-        tmp.push(transaction);
-      }
-      return tmp;
-    });
+    for (const payment of payments) {
+      const saved = await writePayment(payment);
+      result.push(saved.result);
+      written.push(!saved.replayed);
+    }
+
+    return { result, written };
   } catch (error) {
     logger.error(error);
-    if (error instanceof Error) {
-      throw new Error(error.message);
-    }
+    throw error instanceof Error ? error : new Error(ErrorMessage.Unknown);
   }
 };
 

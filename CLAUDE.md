@@ -76,7 +76,9 @@ src/
 │   ├── index.ts            # Router mount
 │   ├── routes.ts           # All POST endpoints
 │   ├── controller.ts       # Handlers; encrypts group IDs into invite IDs
-│   ├── utils/send_notification.ts # OneSignal push helper
+│   ├── utils/
+│   │   ├── send_notification.ts # OneSignal push helper
+│   │   └── idempotency-key.ts   # validates/normalises the body's `idempotency_key`
 │   └── db/
 │       ├── postgres.ts     # initModels for split schema
 │       ├── models/         # Group, User, Transaction, TransactionPart
@@ -95,6 +97,8 @@ Tests live in `__test__/` mirroring the `src/` tree. `__test__/index.test.ts` mo
 - **Auth model (portfolio only):** Google OAuth via Passport; session stored in signed cookies. CSRF via lusca. Protected routes additionally require that the session user's email resolves to the `user_id` in the query — done in `utils/auth-check.ts`.
 - **Profile pictures** are uploaded to Supabase Storage (`portfolio_images` bucket) keyed as `<user_email>/<user_id>_<timestamp>`. Uploads first delete any prior files under the user's prefix.
 - **Split invite IDs** are AES-256-GCM-encrypted group IDs (so the client can carry an opaque token in the `invite_id` field; decrypted server-side to look up the group).
+- **Idempotent split writes.** One key per written row, supplied by the client as `idempotency_key` **in the request body** of `saveTransaction`, `savePayment` and every element of the `savePayments` array, and stored on `transactions.idempotency_key` under a unique index. (Body, not a header, so the batch — which writes one row per payment — follows the same rule as the single-row routes.) Writes go straight to the DB with no pre-check — the unique index is the gate. A rejected write rolls back, the existing row is looked up by key, and that is returned instead (HTTP 200, same body) with no second push notification. `savePayments` saves each payment in its own transaction, so a batch repeating an earlier one writes only what is new in a single pass; it reports this as a `written: boolean[]` parallel to the request, which the controller uses to notify only the payments it actually wrote. **The batch is deliberately not atomic** — a payment failing for a non-key reason leaves the ones before it committed. The per-payment keys are what make that safe: retrying the same batch replays the committed payments and writes the rest, so the client must keep its keys until the call succeeds. Postgres treats NULL keys as distinct, so clients that send no key keep the old at-least-once behaviour. No expiry is needed: a key lives and dies with the transaction row it tags. Key rules are payload validation, applied in the controller via `validateIdempotentPayload` / `validateIdempotentBatch` before the query layer is reached: a blank key normalises to NULL, an oversized one is rejected, and a batch must be keyed throughout or not at all with no key repeated.
+- **Boot-time column migration.** `DBConnection.#ensureIdempotency()` runs *unconditionally* (unlike `#createIndexes`, which is gated on `alter`) because `sync({ alter: false })` — what `src/index.ts` calls — does not add columns to a table that already exists. Note that `#createIndexes` therefore never runs in production today.
 - **Tic-tac-toe** uses in-memory `games` state keyed by `gameId` (plain object via `Object.create(null)`); max 2 players per room; emits `users` only when the room fills.
 - **HTTP server timeouts:** 10s request timeout with a `408` reply, plus auto-retry on `EADDRINUSE`.
 - **Trust proxy** is set to `1` (one hop) — required so rate limiter sees real client IPs behind Render's proxy.
@@ -117,6 +121,8 @@ Tests live in `__test__/` mirroring the `src/` tree. `__test__/index.test.ts` mo
 3. Add query helpers in `db/queries/awards.ts`.
 4. Add controller handlers in `controller.ts`, wire them in `routes.ts` (GET) and `protected-routes.ts` (POST/DELETE).
 5. Add validators in `utils/validator.ts`.
+
+**Make a split write idempotent:** take an optional `idempotencyKey` in the query helper, check `findExistingTransaction(key)` before writing, set `idempotency_key` on the created row, and catch `UniqueConstraintError` to return the winner's row. The controller validates the payload first (`validateIdempotentPayload`, or `validateIdempotentBatch` for a multi-row write) and skips side effects such as push notifications when the returned `replayed` is true; the query layer trusts the key it is given. For a multi-row write, take a key per row from the body and use `findExistingTransactions(keys)` instead.
 
 **Add a new split endpoint:**
 1. Add payload type in `src/types/split.d.ts`.
