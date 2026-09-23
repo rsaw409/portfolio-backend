@@ -12,7 +12,7 @@ interface createUserPayload {
 }
 
 interface saveTransactionPayload {
-  groupName: string;
+  groupName?: string;
   totalAmount: number;
   title: string;
   by: number;
@@ -21,7 +21,7 @@ interface saveTransactionPayload {
 }
 
 interface savePaymentPayload {
-  groupName: string;
+  groupName?: string;
   amount: number;
   from: number;
   to: number;
@@ -30,9 +30,10 @@ interface savePaymentPayload {
 
 interface getAllTransactionInGroupPayload {
   group_id: number;
-  by?: number | string;
-  user_id?: number | string;
-  payments?: string;
+  by?: number;
+  user_id?: number;
+  // true: payments only, false: expenses only, undefined: no filter.
+  payments?: boolean;
 }
 
 interface User {

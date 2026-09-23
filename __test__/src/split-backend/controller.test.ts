@@ -106,7 +106,7 @@ describe('Testing Controllers', () => {
     expect(createGroupInDB).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.send).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Required Field missing name' })
+      expect.objectContaining({ message: expect.stringContaining('name') })
     );
   });
 
@@ -137,7 +137,7 @@ describe('Testing Controllers', () => {
     expect(getGroupInDB).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.send).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Required Field missing invite_id' })
+      expect.objectContaining({ message: expect.stringContaining('invite_id') })
     );
   });
 
@@ -306,10 +306,9 @@ describe('Testing Controllers', () => {
     });
     await savePayment(req, res);
     expect(savePaymentInDB).toHaveBeenCalledWith({
-      from: '1',
-      to: '1',
+      from: 1,
+      to: 1,
       amount: 100,
-      idempotency_key: undefined,
     });
     expect(send_push_notification).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
@@ -325,8 +324,8 @@ describe('Testing Controllers', () => {
     });
     await savePayment(req, res);
     expect(savePaymentInDB).toHaveBeenCalledWith({
-      from: '1',
-      to: '1',
+      from: 1,
+      to: 1,
       amount: 100,
       idempotency_key: 'key-1',
     });
@@ -369,8 +368,8 @@ describe('Testing Controllers', () => {
     await savePayments(req, res);
     expect(savePaymentsInDB).toHaveBeenCalledWith([
       {
-        from: '1',
-        to: '2',
+        from: 1,
+        to: 2,
         amount: 100,
         idempotency_key: 'pay-1',
       },
@@ -504,8 +503,14 @@ describe('Testing Controllers', () => {
     });
     await saveTransaction(req, res);
     expect(saveTransactionInDB).toHaveBeenCalledWith({
-      ...req.body,
+      by: 1,
+      title: 'test',
+      totalAmount: 100,
       idempotency_key: 'expense-1',
+      transactionParts: [
+        { user_id: 1, amount: 20 },
+        { user_id: 2, amount: 80 },
+      ],
     });
     expect(send_push_notification).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);

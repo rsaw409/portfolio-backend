@@ -6,7 +6,7 @@ const send_push_notification = ({
   headings,
   title,
 }: {
-  groupName: string;
+  groupName?: string;
   headings: string;
   title: string;
 }) => {

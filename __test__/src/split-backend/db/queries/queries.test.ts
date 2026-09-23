@@ -172,7 +172,16 @@ describe('TEST split-backend queries', () => {
       group_id: 1,
       by: 2,
       user_id: undefined,
-      payments: 'payment',
+      payments: true,
+    });
+  });
+
+  test('TEST getAllTransactionInGroup (only expenses)', async () => {
+    await getAllTransactionInGroup({
+      group_id: 1,
+      by: undefined,
+      user_id: undefined,
+      payments: false,
     });
   });
 

@@ -18,9 +18,16 @@ import {
 import crypto from '../@rsaw409/crypto.js';
 import { send_push_notification } from './utils/send_notification.js';
 import {
-  validateIdempotentBatch,
-  validateIdempotentPayload,
-} from './utils/idempotency-key.js';
+  parse,
+  createGroupSchema,
+  joinGroupSchema,
+  createUserSchema,
+  groupSchema,
+  saveTransactionSchema,
+  savePaymentSchema,
+  savePaymentsSchema,
+  getAllTransactionInGroupSchema,
+} from './utils/validator.js';
 import {
   createGroupPayload,
   createUserPayload,
@@ -37,12 +44,9 @@ const createGroup = async (
   res: Response
 ) => {
   try {
-    const requiredFields = ['name'];
-    if (!requiredFields.every((each) => Object.keys(req.body).includes(each))) {
-      throw new Error(`Required Field missing ${requiredFields}`);
-    }
-
-    const response: any = await createGroupInDB(req.body);
+    const response: any = await createGroupInDB(
+      parse(createGroupSchema, req.body)
+    );
     const inviteId = crypto.encrypt(`${response.id}`);
     return res.status(200).send({ ...response.dataValues, inviteId });
   } catch (error: unknown) {
@@ -60,14 +64,9 @@ const joinGroup = async (
   res: Response
 ) => {
   try {
-    const requiredFields = ['invite_id'];
-    if (!requiredFields.every((each) => Object.keys(req.body).includes(each))) {
-      throw new Error(`Required Field missing ${requiredFields}`);
-    }
+    const { invite_id } = parse(joinGroupSchema, req.body);
 
-    const group_id: number = crypto.decrypt(
-      req.body.invite_id
-    ) as unknown as number;
+    const group_id: number = crypto.decrypt(invite_id) as unknown as number;
 
     const response: any = await getGroupInDB({ group_id: group_id });
 
@@ -93,12 +92,7 @@ const createUser = async (
   res: Response
 ) => {
   try {
-    const requiredFields = ['name', 'group_id'];
-    if (!requiredFields.every((each) => Object.keys(req.body).includes(each))) {
-      throw new Error(`Required Field missing ${requiredFields}`);
-    }
-
-    const response = await createUserInDB(req.body);
+    const response = await createUserInDB(parse(createUserSchema, req.body));
     return res.status(200).send(response);
   } catch (error: unknown) {
     logger.error(error);
@@ -114,32 +108,15 @@ const saveTransaction = async (
   res: Response
 ) => {
   try {
-    const requiredFields = ['by', 'title', 'totalAmount', 'transactionParts'];
-    if (!requiredFields.every((each) => Object.keys(req.body).includes(each))) {
-      throw new Error(`Required Field missing ${requiredFields}`);
-    }
-
-    if (!req.body.transactionParts.every((e) => e.user_id && e.amount)) {
-      throw new Error(`distribution should be array of {userId, amount}`);
-    }
-
-    if (
-      req.body.transactionParts.reduce((sum, e) => sum + e.amount, 0) !=
-      req.body.totalAmount
-    ) {
-      throw new Error(`distribution is not matching with totalAmount.`);
-    }
-
-    const { result, replayed } = await saveTransactionInDB(
-      validateIdempotentPayload(req.body)
-    );
+    const payload = parse(saveTransactionSchema, req.body);
+    const { result, replayed } = await saveTransactionInDB(payload);
     // A replay wrote nothing, so notifying again would announce an expense
     // that does not exist.
     if (!replayed) {
       send_push_notification({
-        groupName: req.body.groupName,
+        groupName: payload.groupName,
         headings: 'New Expense',
-        title: req.body.title,
+        title: payload.title,
       });
     }
     return res.status(200).send(result);
@@ -158,18 +135,13 @@ const savePayment = async (
   res: Response
 ) => {
   try {
-    const requiredFields = ['from', 'to', 'amount'];
-    if (!requiredFields.every((each) => Object.keys(req.body).includes(each))) {
-      throw new Error(`Required Field missing ${requiredFields}`);
-    }
-    const { result, replayed } = await savePaymentInDB(
-      validateIdempotentPayload(req.body)
-    );
+    const payload = parse(savePaymentSchema, req.body);
+    const { result, replayed } = await savePaymentInDB(payload);
     if (!replayed) {
       send_push_notification({
-        groupName: req.body.groupName,
+        groupName: payload.groupName,
         headings: 'New Payment',
-        title: `INR ${req.body.amount}`,
+        title: `INR ${payload.amount}`,
       });
     }
     return res.status(200).send(result);
@@ -188,27 +160,12 @@ const savePayments = async (
   res: Response
 ) => {
   try {
-    if (!Array.isArray(req.body) || req.body.length === 0) {
-      throw new Error('req.body should have array of (from,to,amount');
-    }
-    const requiredFields = ['from', 'to', 'amount'];
-
-    for (let each of req.body) {
-      if (
-        !Object.prototype.hasOwnProperty.call(each, 'from') ||
-        !Object.prototype.hasOwnProperty.call(each, 'to') ||
-        !Object.prototype.hasOwnProperty.call(each, 'amount')
-      ) {
-        throw new Error(`Required Field missing ${requiredFields}`);
-      }
-    }
-    const { result, written } = await savePaymentsInDB(
-      validateIdempotentBatch(req.body)
-    );
+    const payments = parse(savePaymentsSchema, req.body);
+    const { result, written } = await savePaymentsInDB(payments);
 
     // Only the payments this call actually wrote; the rest already notified
     // when they were first written.
-    req.body.forEach((e, index) => {
+    payments.forEach((e, index) => {
       if (written[index]) {
         send_push_notification({
           groupName: e.groupName,
@@ -233,11 +190,9 @@ const getAllUsersInGroup = async (
   res: Response
 ) => {
   try {
-    const requiredFields = ['group_id'];
-    if (!requiredFields.every((each) => Object.keys(req.body).includes(each))) {
-      throw new Error(`Required Field missing ${requiredFields}`);
-    }
-    const response = await getAllUsersInGroupFromDB(req.body);
+    const response = await getAllUsersInGroupFromDB(
+      parse(groupSchema, req.body)
+    );
     return res.status(200).send(response);
   } catch (error: unknown) {
     logger.error(error);
@@ -254,11 +209,9 @@ const getAllTransactionInGroup = async (
   res: Response
 ) => {
   try {
-    const requiredFields = ['group_id'];
-    if (!requiredFields.every((each) => Object.keys(req.body).includes(each))) {
-      throw new Error(`Required Field missing ${requiredFields}`);
-    }
-    const response = await getAllTransactionInGroupFromDB(req.body);
+    const response = await getAllTransactionInGroupFromDB(
+      parse(getAllTransactionInGroupSchema, req.body)
+    );
     return res.status(200).send(response);
   } catch (error: unknown) {
     logger.error(error);
@@ -275,11 +228,9 @@ const getOverviewDataInGroup = async (
   res: Response
 ) => {
   try {
-    const requiredFields = ['group_id'];
-    if (!requiredFields.every((each) => Object.keys(req.body).includes(each))) {
-      throw new Error(`Required Field missing ${requiredFields}`);
-    }
-    const response = await getOverviewDataInGroupFromDb(req.body);
+    const response = await getOverviewDataInGroupFromDb(
+      parse(groupSchema, req.body)
+    );
     return res.status(200).send(response);
   } catch (error: unknown) {
     logger.error(error);

@@ -171,13 +171,6 @@ const getAllTransactionInGroup = async ({
     throw new Error('DB not initialized');
   }
 
-  if (!by || by == 'null') {
-    by = undefined;
-  }
-  if (!user_id || user_id == 'null') {
-    user_id = undefined;
-  }
-
   const query =
     (user_id ? `select * from( ` : ` `) +
     `select group_id, group_name, user_id, user_name, transaction_id, transaction_title, transaction_amount, transaction_date, transaction_category,
@@ -206,11 +199,13 @@ const getAllTransactionInGroup = async ({
   
   where E.id = :group_id` +
     (by ? ` and B.by = :by ` : ` `) +
-    (payments !== null
-      ? payments
+    // undefined means no filter at all, so an absent field no longer falls
+    // through to the expenses-only branch.
+    (payments === undefined
+      ? ``
+      : payments
         ? `and B.category = 'payment'`
-        : `and B.category is null`
-      : ``) +
+        : `and B.category is null`) +
     `) F
   group by 1,2,3,4,5,6,7,8,9` +
     (user_id

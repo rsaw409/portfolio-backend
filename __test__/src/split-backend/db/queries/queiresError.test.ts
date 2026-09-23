@@ -110,7 +110,7 @@ describe('TEST split-backend queries', () => {
         group_id: 1,
         by: 2,
         user_id: 3,
-        payments: 'payment',
+        payments: true,
       })
     ).rejects.toThrow('DB not initialized');
   });
