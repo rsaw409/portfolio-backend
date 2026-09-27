@@ -68,9 +68,13 @@ const saveTransactionSchema = z
     transactionParts: z.array(transactionPartSchema).min(1),
   })
   .refine(
+    // Compare in paise: float sums of 2-decimal shares drift, e.g. 1000 split
+    // six ways as 166.67 x4 + 166.66 x2 sums to 999.9999999999999.
     (body) =>
-      body.transactionParts.reduce((sum, e) => sum + e.amount, 0) ===
-      body.totalAmount,
+      body.transactionParts.reduce(
+        (sum, e) => sum + Math.round(e.amount * 100),
+        0
+      ) === Math.round(body.totalAmount * 100),
     { message: 'distribution is not matching with totalAmount.' }
   );
 
