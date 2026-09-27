@@ -23,6 +23,9 @@ const optionalId = z.preprocess((value) => {
 
 const requiredId = z.coerce.number().int();
 
+/** An amount in paise. Whole numbers only: the columns are BIGINT. */
+const paise = z.number().int('must be a whole number of paise');
+
 /**
  * A tri-state filter: true for payments only, false for expenses only, and
  * absent for no filter at all. Accepts the string forms older clients send.
@@ -55,33 +58,30 @@ const groupSchema = z.object({
 
 const transactionPartSchema = z.object({
   user_id: requiredId,
-  amount: z.number(),
+  amount: paise,
 });
 
 const saveTransactionSchema = z
   .object({
     by: requiredId,
     title: z.string().min(1),
-    totalAmount: z.number(),
+    totalAmount: paise,
     groupName: z.string().optional(),
     idempotency_key: idempotencyKey,
     transactionParts: z.array(transactionPartSchema).min(1),
   })
   .refine(
-    // Compare in paise: float sums of 2-decimal shares drift, e.g. 1000 split
-    // six ways as 166.67 x4 + 166.66 x2 sums to 999.9999999999999.
+    // Integer paise sum exactly, so no rounding is needed.
     (body) =>
-      body.transactionParts.reduce(
-        (sum, e) => sum + Math.round(e.amount * 100),
-        0
-      ) === Math.round(body.totalAmount * 100),
+      body.transactionParts.reduce((sum, e) => sum + e.amount, 0) ===
+      body.totalAmount,
     { message: 'distribution is not matching with totalAmount.' }
   );
 
 const savePaymentSchema = z.object({
   from: requiredId,
   to: requiredId,
-  amount: z.number(),
+  amount: paise,
   groupName: z.string().optional(),
   idempotency_key: idempotencyKey,
 });

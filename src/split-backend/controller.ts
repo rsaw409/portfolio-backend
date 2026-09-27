@@ -39,6 +39,9 @@ import {
 
 import { ErrorMessage } from '../@rsaw409/constant.js';
 
+/** Paise as a rupee string for display, e.g. 12050 -> '120.50'. */
+const formatRupees = (paise: number) => (paise / 100).toFixed(2);
+
 const createGroup = async (
   req: Request<{}, {}, createGroupPayload>,
   res: Response
@@ -141,7 +144,7 @@ const savePayment = async (
       send_push_notification({
         groupName: payload.groupName,
         headings: 'New Payment',
-        title: `INR ${payload.amount}`,
+        title: `INR ${formatRupees(payload.amount)}`,
       });
     }
     return res.status(200).send(result);
@@ -170,7 +173,7 @@ const savePayments = async (
         send_push_notification({
           groupName: e.groupName,
           headings: 'New Payment',
-          title: `INR ${e.amount}`,
+          title: `INR ${formatRupees(e.amount)}`,
         });
       }
     });

@@ -1,8 +1,25 @@
+import pg from 'pg';
 import { Sequelize } from 'sequelize';
 import logger from '../src/@rsaw409/logger.js';
 
 import connectToPortfolioDB from './portfolio-backend/db/postgres.js';
 import connectToSplitDB from './split-backend/db/postgres.js';
+
+/**
+ * node-postgres returns BIGINT (int8) as a string, since it can exceed
+ * Number.MAX_SAFE_INTEGER. Amounts are stored in paise and stay far below that,
+ * so return a number — and fail loudly rather than round if one ever does not.
+ * This also turns count(*) results, which are int8, into numbers.
+ */
+const parseBigInt = (value: string): number => {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new RangeError(`BIGINT ${value} is outside the safe integer range`);
+  }
+  return parsed;
+};
+
+pg.types.setTypeParser(pg.types.builtins.INT8, parseBigInt);
 
 class DBConnection {
   static #instance: DBConnection;
@@ -17,6 +34,8 @@ class DBConnection {
     logger.info('Creating DB instance.');
     this.#sequelize = new Sequelize(connStr, {
       logging: false,
+      // The same pg module the INT8 parser above is registered on.
+      dialectModule: pg,
     });
     DBConnection.#isInitialized = false;
   }
@@ -49,25 +68,11 @@ class DBConnection {
     await connectToPortfolioDB(this.#sequelize, this.portfolio_backend);
     await connectToSplitDB(this.#sequelize, this.split_backend);
     await this.#sequelize.sync({ alter: alter });
-    await this.#ensureIdempotency();
     await this.#createIndexes({ alter: alter });
 
     logger.info('Database Sync Done for all DB');
 
     DBConnection.#isInitialized = true;
-  }
-
-  // Unlike #createIndexes this is not gated on `alter`, because
-  // sync({ alter: false }) does not add columns to a table that already
-  // exists, and duplicate-write protection depends on this index being there.
-  async #ensureIdempotency() {
-    const psql: Sequelize = this.#sequelize;
-    await psql.query(
-      `alter table ${this.split_backend}.transactions add column if not exists idempotency_key varchar(255)`
-    );
-    await psql.query(
-      `create unique index if not exists transactions_idempotency_key on ${this.split_backend}.transactions (idempotency_key)`
-    );
   }
 
   async #createIndexes({ alter = false }) {
@@ -113,4 +118,4 @@ class DBConnection {
 const db: DBConnection = DBConnection.getInstance();
 
 export default db;
-export { DBConnection };
+export { DBConnection, parseBigInt };

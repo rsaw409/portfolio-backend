@@ -299,7 +299,7 @@ describe('Testing Controllers', () => {
 
   test('savePayment should return success', async () => {
     let req = {
-      body: { from: '1', to: '1', amount: 100 },
+      body: { from: '1', to: '1', amount: 10000 },
     } as any as Request;
     (savePaymentInDB as Mock).mockImplementation(() => {
       return { result: { id: 1 }, replayed: false };
@@ -308,16 +308,31 @@ describe('Testing Controllers', () => {
     expect(savePaymentInDB).toHaveBeenCalledWith({
       from: 1,
       to: 1,
-      amount: 100,
+      amount: 10000,
     });
-    expect(send_push_notification).toHaveBeenCalled();
+    expect(send_push_notification).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'INR 100.00' })
+    );
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalledWith({ id: 1 });
   });
 
+  test('savePayment rejects a fractional amount of paise', async () => {
+    let req = {
+      body: { from: '1', to: '2', amount: 100.5 },
+    } as any as Request;
+    await savePayment(req, res);
+    expect(savePaymentInDB).not.toHaveBeenCalled();
+    expect(send_push_notification).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: 'amount: must be a whole number of paise',
+    });
+  });
+
   test('savePayment should replay the stored response without notifying', async () => {
     let req = {
-      body: { from: '1', to: '1', amount: 100, idempotency_key: ' key-1 ' },
+      body: { from: '1', to: '1', amount: 10000, idempotency_key: ' key-1 ' },
     } as any as Request;
     (savePaymentInDB as Mock).mockImplementation(() => {
       return { result: { id: 7 }, replayed: true };
@@ -326,7 +341,7 @@ describe('Testing Controllers', () => {
     expect(savePaymentInDB).toHaveBeenCalledWith({
       from: 1,
       to: 1,
-      amount: 100,
+      amount: 10000,
       idempotency_key: 'key-1',
     });
     expect(send_push_notification).not.toHaveBeenCalled();
@@ -360,7 +375,7 @@ describe('Testing Controllers', () => {
 
   test('savePayments should return success', async () => {
     let req = {
-      body: [{ from: '1', to: '2', amount: 100, idempotency_key: ' pay-1 ' }],
+      body: [{ from: '1', to: '2', amount: 10000, idempotency_key: ' pay-1 ' }],
     } as any as Request;
     (savePaymentsInDB as Mock).mockImplementation(() => {
       return { result: [{ id: 1 }], written: [true] };
@@ -370,7 +385,7 @@ describe('Testing Controllers', () => {
       {
         from: 1,
         to: 2,
-        amount: 100,
+        amount: 10000,
         idempotency_key: 'pay-1',
       },
     ]);
@@ -382,8 +397,8 @@ describe('Testing Controllers', () => {
   test('savePayments rejects a half-keyed batch', async () => {
     let req = {
       body: [
-        { from: '1', to: '2', amount: 100, idempotency_key: 'pay-1' },
-        { from: '2', to: '3', amount: 50 },
+        { from: '1', to: '2', amount: 10000, idempotency_key: 'pay-1' },
+        { from: '2', to: '3', amount: 5000 },
       ],
     } as any as Request;
     await savePayments(req, res);
@@ -398,8 +413,8 @@ describe('Testing Controllers', () => {
   test('savePayments notifies only the payments it actually wrote', async () => {
     let req = {
       body: [
-        { from: '1', to: '2', amount: 100, idempotency_key: 'pay-1' },
-        { from: '2', to: '3', amount: 50, idempotency_key: 'pay-2' },
+        { from: '1', to: '2', amount: 10000, idempotency_key: 'pay-1' },
+        { from: '2', to: '3', amount: 5000, idempotency_key: 'pay-2' },
       ],
     } as any as Request;
     (savePaymentsInDB as Mock).mockImplementation(() => {
@@ -408,7 +423,7 @@ describe('Testing Controllers', () => {
     await savePayments(req, res);
     expect(send_push_notification).toHaveBeenCalledTimes(1);
     expect(send_push_notification).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'INR 50' })
+      expect.objectContaining({ title: 'INR 50.00' })
     );
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }]);
@@ -417,8 +432,8 @@ describe('Testing Controllers', () => {
   test('savePayments sends no notification when the whole batch is a replay', async () => {
     let req = {
       body: [
-        { from: '1', to: '2', amount: 100, idempotency_key: 'pay-1' },
-        { from: '2', to: '3', amount: 50, idempotency_key: 'pay-2' },
+        { from: '1', to: '2', amount: 10000, idempotency_key: 'pay-1' },
+        { from: '2', to: '3', amount: 5000, idempotency_key: 'pay-2' },
       ],
     } as any as Request;
     (savePaymentsInDB as Mock).mockImplementation(() => {
@@ -451,8 +466,8 @@ describe('Testing Controllers', () => {
       body: {
         by: '1',
         title: 'test',
-        totalAmount: 100,
-        transactionParts: [{ user_id: 1 }, { user_id: 2, amount: 80 }],
+        totalAmount: 10000,
+        transactionParts: [{ user_id: 1 }, { user_id: 2, amount: 8000 }],
       },
     } as any as Request;
     await saveTransaction(req, res);
@@ -469,10 +484,10 @@ describe('Testing Controllers', () => {
       body: {
         by: '1',
         title: 'test',
-        totalAmount: 100,
+        totalAmount: 10000,
         transactionParts: [
-          { user_id: 1, amount: 90 },
-          { user_id: 2, amount: 80 },
+          { user_id: 1, amount: 9000 },
+          { user_id: 2, amount: 8000 },
         ],
       },
     } as any as Request;
@@ -490,11 +505,11 @@ describe('Testing Controllers', () => {
       body: {
         by: '1',
         title: 'test',
-        totalAmount: 100,
+        totalAmount: 10000,
         idempotency_key: 'expense-1',
         transactionParts: [
-          { user_id: 1, amount: 20 },
-          { user_id: 2, amount: 80 },
+          { user_id: 1, amount: 2000 },
+          { user_id: 2, amount: 8000 },
         ],
       },
     } as any as Request;
@@ -505,11 +520,11 @@ describe('Testing Controllers', () => {
     expect(saveTransactionInDB).toHaveBeenCalledWith({
       by: 1,
       title: 'test',
-      totalAmount: 100,
+      totalAmount: 10000,
       idempotency_key: 'expense-1',
       transactionParts: [
-        { user_id: 1, amount: 20 },
-        { user_id: 2, amount: 80 },
+        { user_id: 1, amount: 2000 },
+        { user_id: 2, amount: 8000 },
       ],
     });
     expect(send_push_notification).toHaveBeenCalled();
@@ -522,11 +537,11 @@ describe('Testing Controllers', () => {
       body: {
         by: '1',
         title: 'test',
-        totalAmount: 100,
+        totalAmount: 10000,
         idempotency_key: 'expense-1',
         transactionParts: [
-          { user_id: 1, amount: 20 },
-          { user_id: 2, amount: 80 },
+          { user_id: 1, amount: 2000 },
+          { user_id: 2, amount: 8000 },
         ],
       },
     } as any as Request;

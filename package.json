@@ -57,6 +57,7 @@
     "@types/node": "^22.5.4",
     "@types/passport": "^1.0.16",
     "@types/passport-google-oauth20": "^2.0.16",
+    "@types/pg": "^8.23.1",
     "@types/response-time": "^2.3.9",
     "@types/sequelize": "^4.28.20",
     "@types/supertest": "^7.2.1",

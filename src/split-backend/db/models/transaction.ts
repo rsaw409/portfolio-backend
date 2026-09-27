@@ -13,8 +13,10 @@ const createTransactionModel = (sequelize: Sequelize, schema: string) => {
         },
         onDelete: 'CASCADE',
       },
+      // In paise. BIGINT comes back from node-postgres as a number; see the
+      // INT8 type parser in src/postgres.ts.
       amount: {
-        type: DataTypes.DOUBLE,
+        type: DataTypes.BIGINT,
         allowNull: false,
       },
       title: {
@@ -37,6 +39,15 @@ const createTransactionModel = (sequelize: Sequelize, schema: string) => {
       timestamps: true,
       underscored: true,
       tableName: 'transactions',
+      // sync() adds this to an existing table too, and skips it where an
+      // index of this name already exists.
+      indexes: [
+        {
+          name: 'transactions_idempotency_key',
+          unique: true,
+          fields: ['idempotency_key'],
+        },
+      ],
     }
   );
   return Transaction;

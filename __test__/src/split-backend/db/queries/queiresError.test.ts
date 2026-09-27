@@ -73,7 +73,7 @@ describe('TEST split-backend queries', () => {
       saveTransaction({
         by: 1,
         title: 'ttile',
-        totalAmount: 112,
+        totalAmount: 11200,
         groupName: 'groupName',
         transactionParts: [],
       })
@@ -85,7 +85,7 @@ describe('TEST split-backend queries', () => {
       savePayment({
         from: 1,
         to: 2,
-        amount: 112,
+        amount: 11200,
         groupName: 'groupName',
       })
     ).rejects.toThrow('DB not initialized');
@@ -97,7 +97,7 @@ describe('TEST split-backend queries', () => {
         {
           from: 1,
           to: 2,
-          amount: 112,
+          amount: 11200,
           groupName: 'groupName',
         },
       ])

@@ -14,15 +14,15 @@ const {
 const { ErrorMessage } = await import('../../../../src/@rsaw409/constant.js');
 
 const payment = (extra: Record<string, unknown> = {}) => {
-  return { from: 1, to: 2, amount: 50, ...extra };
+  return { from: 1, to: 2, amount: 5000, ...extra };
 };
 
 const expense = (extra: Record<string, unknown> = {}) => {
   return {
     by: 1,
     title: 'Dinner',
-    totalAmount: 100,
-    transactionParts: [{ user_id: 2, amount: 100 }],
+    totalAmount: 10000,
+    transactionParts: [{ user_id: 2, amount: 10000 }],
     ...extra,
   };
 };
@@ -163,18 +163,75 @@ describe('TEST required fields', () => {
     expect(() =>
       parse(
         saveTransactionSchema,
-        expense({ transactionParts: [{ user_id: 2, amount: 40 }] })
+        expense({ transactionParts: [{ user_id: 2, amount: 4000 }] })
       )
     ).toThrow(/totalAmount/);
   });
 
   test('accepts a transaction whose parts sum correctly', () => {
-    expect(parse(saveTransactionSchema, expense()).totalAmount).toEqual(100);
+    expect(parse(saveTransactionSchema, expense()).totalAmount).toEqual(10000);
+  });
+
+  test('sums parts exactly in paise', () => {
+    // 1000 rupees six ways: the split that drifted as float rupees.
+    const parts = [16667, 16667, 16667, 16667, 16666, 16666].map(
+      (amount, user_id) => ({ user_id, amount })
+    );
+    expect(
+      parse(
+        saveTransactionSchema,
+        expense({ totalAmount: 100000, transactionParts: parts })
+      ).transactionParts
+    ).toHaveLength(6);
   });
 
   test('rejects a transaction with no parts', () => {
     expect(() =>
       parse(saveTransactionSchema, expense({ transactionParts: [] }))
     ).toThrow(/transactionParts/);
+  });
+});
+
+describe('TEST amounts are whole paise', () => {
+  test('rejects a fractional payment amount', () => {
+    expect(() => parse(savePaymentSchema, payment({ amount: 50.5 }))).toThrow(
+      /amount: must be a whole number of paise/
+    );
+  });
+
+  test('rejects a fractional total or part', () => {
+    expect(() =>
+      parse(
+        saveTransactionSchema,
+        expense({
+          totalAmount: 100.5,
+          transactionParts: [{ user_id: 2, amount: 100.5 }],
+        })
+      )
+    ).toThrow(/totalAmount: must be a whole number of paise/);
+    expect(() =>
+      parse(
+        saveTransactionSchema,
+        expense({
+          totalAmount: 100,
+          transactionParts: [
+            { user_id: 2, amount: 99.5 },
+            { user_id: 3, amount: 0.5 },
+          ],
+        })
+      )
+    ).toThrow(/transactionParts\.0\.amount/);
+  });
+
+  test('rejects an amount beyond the safe integer range', () => {
+    expect(() =>
+      parse(savePaymentSchema, payment({ amount: Number.MAX_SAFE_INTEGER + 2 }))
+    ).toThrow(/amount/);
+  });
+
+  test('rejects an amount sent as a string', () => {
+    expect(() => parse(savePaymentSchema, payment({ amount: '5000' }))).toThrow(
+      /amount/
+    );
   });
 });

@@ -123,7 +123,7 @@ describe('TEST split-backend queries', () => {
     await saveTransaction({
       by: 1,
       title: 'titile',
-      totalAmount: 112,
+      totalAmount: 11200,
       groupName: 'groupName',
       transactionParts: [],
     });
@@ -133,7 +133,7 @@ describe('TEST split-backend queries', () => {
     await savePayment({
       from: 1,
       to: 2,
-      amount: 112,
+      amount: 11200,
       groupName: 'groupName',
     });
   });
@@ -143,7 +143,7 @@ describe('TEST split-backend queries', () => {
       {
         from: 1,
         to: 2,
-        amount: 112,
+        amount: 11200,
         groupName: 'groupName',
       },
     ]);

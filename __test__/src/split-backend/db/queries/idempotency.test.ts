@@ -87,12 +87,12 @@ const { ErrorMessage } =
 const expense = {
   by: 1,
   title: 'dinner',
-  totalAmount: 100,
+  totalAmount: 10000,
   groupName: 'trip',
-  transactionParts: [{ user_id: 2, amount: 100 }],
+  transactionParts: [{ user_id: 2, amount: 10000 }],
 };
 
-const payment = { from: 1, to: 2, amount: 50, groupName: 'trip' };
+const payment = { from: 1, to: 2, amount: 5000, groupName: 'trip' };
 
 const keyed = <T>(payload: T, idempotency_key: string) => {
   return { ...payload, idempotency_key };

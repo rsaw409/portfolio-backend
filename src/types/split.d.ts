@@ -13,6 +13,7 @@ interface createUserPayload {
 
 interface saveTransactionPayload {
   groupName?: string;
+  // All amounts are whole paise.
   totalAmount: number;
   title: string;
   by: number;
@@ -22,6 +23,7 @@ interface saveTransactionPayload {
 
 interface savePaymentPayload {
   groupName?: string;
+  // In paise.
   amount: number;
   from: number;
   to: number;
