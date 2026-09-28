@@ -145,6 +145,78 @@ describe('TEST savePayments batch rules', () => {
   });
 });
 
+describe('TEST createGroup payload', () => {
+  test('defaults currency and members for name-only clients', () => {
+    expect(parse(createGroupSchema, { name: 'trip' })).toEqual({
+      name: 'trip',
+      currency: 'INR',
+      members: [],
+    });
+  });
+
+  test('trims the group name and member names', () => {
+    expect(
+      parse(createGroupSchema, {
+        name: '  Manali Trip ',
+        currency: ' inr ',
+        members: [' Rohit', 'Priya '],
+        idempotency_key: 'k',
+      })
+    ).toEqual({
+      name: 'Manali Trip',
+      currency: 'INR',
+      members: ['Rohit', 'Priya'],
+      idempotency_key: 'k',
+    });
+  });
+
+  test('rejects a missing, blank or non-text group name', () => {
+    expect(() => parse(createGroupSchema, {})).toThrow('name: is required');
+    expect(() => parse(createGroupSchema, { name: '   ' })).toThrow(
+      'name: must not be blank'
+    );
+    expect(() => parse(createGroupSchema, { name: 7 })).toThrow(
+      'name: must be text'
+    );
+  });
+
+  test('accepts only INR', () => {
+    for (const currency of ['USD', 'RUPEE', '']) {
+      expect(() => parse(createGroupSchema, { name: 'a', currency })).toThrow(
+        `currency: ${ErrorMessage.CurrencyUnsupported}`
+      );
+    }
+  });
+
+  test('rejects blank and repeated member names', () => {
+    expect(() =>
+      parse(createGroupSchema, { name: 'a', members: ['Rohit', '  '] })
+    ).toThrow('members.1: must not be blank');
+    expect(() =>
+      parse(createGroupSchema, { name: 'a', members: ['Rohit', 'rohit '] })
+    ).toThrow('members: must not repeat a name');
+    expect(() =>
+      parse(createGroupSchema, { name: 'a', members: 'Rohit' })
+    ).toThrow('members: must be a list of names');
+  });
+
+  test('allows a group with one member or none', () => {
+    expect(
+      parse(createGroupSchema, { name: 'a', members: ['Rohit'] })
+    ).toHaveProperty('members', ['Rohit']);
+    expect(parse(createGroupSchema, { name: 'a', members: [] })).toHaveProperty(
+      'members',
+      []
+    );
+  });
+
+  test('treats a blank idempotency_key as none', () => {
+    expect(
+      parse(createGroupSchema, { name: 'a', idempotency_key: ' ' })
+    ).not.toHaveProperty('idempotency_key', expect.anything());
+  });
+});
+
 describe('TEST required fields', () => {
   test('names the missing field', () => {
     expect(() => parse(createGroupSchema, {})).toThrow(/name/);

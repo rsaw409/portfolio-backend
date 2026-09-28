@@ -14,23 +14,24 @@ vi.mock('sequelize', () => {
         query: vi.fn(),
       };
     }),
-    DataTypes: { INTEGER: 'INTEGER', STRING: 'STRING', ARRAY: () => {} },
+    DataTypes: {
+      INTEGER: 'INTEGER',
+      // Callable, like the real one, for sized columns such as STRING(3).
+      STRING: Object.assign(() => 'STRING', { toString: () => 'STRING' }),
+      ARRAY: () => {},
+    },
   };
 });
 
 const { Sequelize } = await import('sequelize');
-const { default: createGroupModel } = await import(
-  '../../../../../src/split-backend/db/models/group.js'
-);
-const { default: createUserModel } = await import(
-  '../../../../../src/split-backend/db/models/user.js'
-);
-const { default: createTransactionModel } = await import(
-  '../../../../../src/split-backend/db/models/transaction.js'
-);
-const { default: createTransactionPartModel } = await import(
-  '../../../../../src/split-backend/db/models/transactionPart.js'
-);
+const { default: createGroupModel } =
+  await import('../../../../../src/split-backend/db/models/group.js');
+const { default: createUserModel } =
+  await import('../../../../../src/split-backend/db/models/user.js');
+const { default: createTransactionModel } =
+  await import('../../../../../src/split-backend/db/models/transaction.js');
+const { default: createTransactionPartModel } =
+  await import('../../../../../src/split-backend/db/models/transactionPart.js');
 
 describe('TEST models init', () => {
   test('tests portfolio db models init', () => {

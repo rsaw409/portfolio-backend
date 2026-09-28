@@ -39,8 +39,42 @@ const optionalBoolean = z.preprocess((value) => {
   return value;
 }, z.boolean().optional());
 
+/** Trimmed text that must not be blank, with messages fit for a client. */
+const nonBlankText = z
+  .string({
+    error: (issue) =>
+      issue.input === undefined ? ErrorMessage.Required : ErrorMessage.NotText,
+  })
+  .trim()
+  .min(1, ErrorMessage.Blank);
+
+/**
+ * Only INR for now: amounts are paise and notifications print 'INR', so any
+ * other currency would be mislabelled. Case-insensitive, so 'inr' is fine.
+ */
+const currency = z.preprocess(
+  (value) => (typeof value === 'string' ? value.trim().toUpperCase() : value),
+  z.literal('INR', { error: ErrorMessage.CurrencyUnsupported })
+);
+
+/**
+ * Both new fields are optional so clients that send only a name keep working:
+ * such a group is INR with no members, exactly as before.
+ */
 const createGroupSchema = z.object({
-  name: z.string().min(1),
+  name: nonBlankText,
+  currency: currency.default('INR'),
+  members: z
+    .array(nonBlankText, { error: ErrorMessage.NotAList })
+    .default([])
+    // Case-insensitive: 'Rohit' and 'rohit' in one group are the same person
+    // as far as whoever picks a payer from the list can tell.
+    .refine(
+      (names) =>
+        new Set(names.map((n) => n.toLowerCase())).size === names.length,
+      { message: ErrorMessage.MemberRepeated }
+    ),
+  idempotency_key: idempotencyKey,
 });
 
 const joinGroupSchema = z.object({

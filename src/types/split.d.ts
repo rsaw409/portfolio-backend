@@ -1,5 +1,10 @@
 interface createGroupPayload {
   name: string;
+  // ISO 4217; defaults to INR.
+  currency?: string;
+  // Names of the users to create in the group along with it.
+  members?: string[];
+  idempotency_key?: string;
 }
 
 interface joinGroupPayload {

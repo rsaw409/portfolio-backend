@@ -47,11 +47,20 @@ const createGroup = async (
   res: Response
 ) => {
   try {
-    const response: any = await createGroupInDB(
+    // A replay returns the same body as the original call.
+    const { result } = await createGroupInDB(
       parse(createGroupSchema, req.body)
     );
-    const inviteId = crypto.encrypt(`${response.id}`);
-    return res.status(200).send({ ...response.dataValues, inviteId });
+    const { group, members } = result;
+    return res.status(200).send({
+      id: group.get('id'),
+      name: group.get('name'),
+      inviteId: crypto.encryptDeterministic(`${group.get('id')}`),
+      currency: group.get('currency'),
+      members: members.map((member) => {
+        return { user_id: member.get('id'), name: member.get('name') };
+      }),
+    });
   } catch (error: unknown) {
     logger.error(error);
     let message = ErrorMessage.Unknown;
@@ -77,7 +86,7 @@ const joinGroup = async (
       throw new Error('No Group Found');
     }
 
-    const inviteId = crypto.encrypt(`${response.id}`);
+    const inviteId = crypto.encryptDeterministic(`${response.id}`);
 
     return res.status(200).send({ ...response, inviteId });
   } catch (error: unknown) {

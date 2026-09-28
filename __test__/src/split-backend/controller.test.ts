@@ -37,7 +37,7 @@ vi.mock('../../../src/split-backend/db/queries/transaction.js', () => {
 vi.mock('../../../src/@rsaw409/crypto.js', () => {
   return {
     default: {
-      encrypt: vi.fn(),
+      encryptDeterministic: vi.fn(),
       decrypt: vi.fn(),
     },
   };
@@ -84,6 +84,11 @@ const {
   saveTransaction,
 } = await import('../../../src/split-backend/controller.js');
 
+/** A stand-in for a Sequelize model instance. */
+const row = (values: Record<string, any>) => {
+  return { get: (key: string) => values[key] };
+};
+
 describe('Testing Controllers', () => {
   let res = {
     status: vi.fn().mockReturnThis(),
@@ -118,15 +123,65 @@ describe('Testing Controllers', () => {
     } as any as Request;
     (createGroupInDB as Mock).mockImplementation(() => {
       return {
-        id: 1,
-        dataValues: {},
+        result: {
+          group: row({ id: 1, name: 'test-group', currency: 'INR' }),
+          members: [],
+        },
+        replayed: false,
       };
     });
     await createGroup(req, res);
-    expect(createGroupInDB).toHaveBeenCalledWith({ name: 'test-group' });
-    expect(crypto.encrypt).toHaveBeenCalled();
+    // Older clients send only a name and get an INR group with no members.
+    expect(createGroupInDB).toHaveBeenCalledWith({
+      name: 'test-group',
+      currency: 'INR',
+      members: [],
+    });
+    expect(crypto.encryptDeterministic).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalled();
+  });
+
+  test('createGroup returns the group with its members', async () => {
+    let req = {
+      body: {
+        name: 'Manali Trip',
+        currency: 'inr',
+        members: ['Rohit', ' Priya '],
+        idempotency_key: 'k1',
+      },
+    } as any as Request;
+    (createGroupInDB as Mock).mockResolvedValue({
+      result: {
+        group: row({ id: 42, name: 'Manali Trip', currency: 'INR' }),
+        members: [
+          row({ id: 101, name: 'Rohit', group_id: 42 }),
+          row({ id: 102, name: 'Priya', group_id: 42 }),
+        ],
+      },
+      replayed: true,
+    });
+    (crypto.encryptDeterministic as Mock).mockReturnValue('enc-42');
+    await createGroup(req, res);
+    expect(createGroupInDB).toHaveBeenCalledWith({
+      name: 'Manali Trip',
+      currency: 'INR',
+      members: ['Rohit', 'Priya'],
+      idempotency_key: 'k1',
+    });
+    expect(crypto.encryptDeterministic).toHaveBeenCalledWith('42');
+    // A replay answers exactly as the original call did.
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith({
+      id: 42,
+      name: 'Manali Trip',
+      inviteId: 'enc-42',
+      currency: 'INR',
+      members: [
+        { user_id: 101, name: 'Rohit' },
+        { user_id: 102, name: 'Priya' },
+      ],
+    });
   });
 
   test('joinGroup should throw error if payload in invalid', async () => {

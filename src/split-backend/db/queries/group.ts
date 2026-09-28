@@ -1,15 +1,78 @@
-import { QueryTypes } from 'sequelize';
+import { Model, QueryTypes, UniqueConstraintError } from 'sequelize';
 import DB from '../../../postgres.js';
-import { createGroupPayload } from '../../../types/split.js';
+import logger from '../../../@rsaw409/logger.js';
+import { ErrorMessage } from '../../../@rsaw409/constant.js';
+import { createGroupPayload, IdempotentResult } from '../../../types/split.js';
 
 const sequelize = DB.getSequelize();
 const schemaname = DB.split_backend;
 
-const createGroup = async (payload: createGroupPayload) => {
-  if (sequelize != null) {
-    return sequelize.models.Group.create({ name: payload.name });
-  } else {
-    throw new Error('DB not initialized');
+interface GroupWithMembers {
+  group: Model;
+  members: Model[];
+}
+
+/**
+ * The group already created under this key, with its current members.
+ * Undefined when the key is new, or when the client sent no key at all.
+ */
+const findExistingGroup = async (
+  idempotency_key?: string
+): Promise<GroupWithMembers | undefined> => {
+  if (!idempotency_key) return undefined;
+  const group = await sequelize.models.Group.findOne({
+    where: { idempotency_key },
+  });
+  if (!group) return undefined;
+  const members = await sequelize.models.User.findAll({
+    where: { group_id: group.get('id') },
+    order: [['id', 'ASC']],
+  });
+  return { group, members };
+};
+
+/**
+ * Creates the group and its members together, so a failure never leaves a
+ * group without the members the client asked for.
+ */
+const createGroup = async (
+  payload: createGroupPayload
+): Promise<IdempotentResult<GroupWithMembers>> => {
+  const idempotencyKey = payload.idempotency_key;
+  try {
+    if (!sequelize) {
+      throw new Error('DB not initialized');
+    }
+
+    const result = await sequelize.transaction(async (t) => {
+      const group = await sequelize.models.Group.create(
+        {
+          name: payload.name,
+          currency: payload.currency,
+          idempotency_key: idempotencyKey,
+        },
+        { transaction: t }
+      );
+
+      const members = await sequelize.models.User.bulkCreate(
+        (payload.members ?? []).map((name) => {
+          return { name, group_id: group.get('id') };
+        }),
+        { transaction: t }
+      );
+
+      return { group, members };
+    });
+    return { result, replayed: false };
+  } catch (error) {
+    // The index rejected the key, so this group already exists and our write
+    // rolled back whole. Return the group that is already there.
+    if (error instanceof UniqueConstraintError) {
+      const winner = await findExistingGroup(idempotencyKey);
+      if (winner) return { result: winner, replayed: true };
+    }
+    logger.error(error);
+    throw error instanceof Error ? error : new Error(ErrorMessage.Unknown);
   }
 };
 
@@ -17,6 +80,7 @@ const getGroup = async ({ group_id }: { group_id: number }) => {
   if (sequelize !== null) {
     return sequelize.models.Group.findOne({
       where: { id: group_id },
+      attributes: { exclude: ['idempotency_key'] },
       raw: true,
     });
   } else {
@@ -56,4 +120,4 @@ where A.group_id = :group_id`;
   }
 };
 
-export { getGroup, createGroup, getOverviewDataInGroup };
+export { getGroup, createGroup, getOverviewDataInGroup, GroupWithMembers };

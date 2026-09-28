@@ -30,6 +30,7 @@ vi.mock('../../../../../src/postgres.js', () => {
             Group: {
               create: vi.fn((p) => {
                 expect(p).toHaveProperty('name');
+                return { get: () => 1 };
               }),
               findOne: vi.fn((p) => {
                 expect(p).toHaveProperty('where');
@@ -55,6 +56,10 @@ vi.mock('../../../../../src/postgres.js', () => {
               create: vi.fn((p) => {
                 expect(p).toHaveProperty('name', expect.any(String));
                 expect(p).toHaveProperty('group_id', expect.any(Number));
+              }),
+              bulkCreate: vi.fn((p) => {
+                expect(p).toEqual(expect.any(Array));
+                return [];
               }),
             },
             Transaction: {

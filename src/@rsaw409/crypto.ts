@@ -11,8 +11,24 @@ class MyCrypto {
     .digest()
     .slice(0, 32);
 
-  encrypt(text: string): string {
-    const iv = crypto.randomBytes(this.#IV_LENGTH); // Generate a random IV for each encryption
+  // Separate from #key, so the IV derivation and the cipher never share a key.
+  #ivKey = Buffer.from(
+    crypto.hkdfSync('sha256', this.#key, '', 'deterministic-iv', 32)
+  );
+
+  /**
+   * The IV is an HMAC of the text, so the same text always gives the same
+   * token (used for invite IDs, which must not change for a group). Different
+   * texts get different IVs, so GCM never reuses an IV across plaintexts; the
+   * only thing this reveals is whether two tokens hold the same text. Tokens
+   * issued earlier with a random IV share the format, so decrypt() reads both.
+   */
+  encryptDeterministic(text: string): string {
+    const iv = crypto
+      .createHmac('sha256', this.#ivKey)
+      .update(text, 'utf8')
+      .digest()
+      .subarray(0, this.#IV_LENGTH);
 
     const cipher = crypto.createCipheriv(
       this.#algorithm,
