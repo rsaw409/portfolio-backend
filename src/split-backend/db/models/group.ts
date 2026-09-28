@@ -15,6 +15,14 @@ const createGroupModel = (sequelize: Sequelize, schema: string) => {
         allowNull: false,
         defaultValue: 'INR',
       },
+      // How many decimals `currency`'s minor unit has (2 for INR, 0 for JPY):
+      // the scale of every amount in this group. Set by the server from the
+      // currency, and changed only along with it.
+      currency_decimals: {
+        type: DataTypes.SMALLINT,
+        allowNull: false,
+        defaultValue: 2,
+      },
       // Same contract as transactions.idempotency_key: the unique index stops
       // a retried createGroup making a second group, and NULLs never collide.
       idempotency_key: {

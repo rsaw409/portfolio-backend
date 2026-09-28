@@ -2,6 +2,8 @@ interface createGroupPayload {
   name: string;
   // ISO 4217; defaults to INR.
   currency?: string;
+  // Decimals of the currency's minor unit (2 for INR): the scale of amounts.
+  currency_decimals: number;
   // Names of the users to create in the group along with it.
   members?: string[];
   idempotency_key?: string;
@@ -17,7 +19,7 @@ interface createUserPayload {
 }
 
 interface saveTransactionPayload {
-  // All amounts are whole paise.
+  // All amounts are whole minor units of the group's currency (paise for INR).
   totalAmount: number;
   title: string;
   by: number;
@@ -26,7 +28,7 @@ interface saveTransactionPayload {
 }
 
 interface savePaymentPayload {
-  // In paise.
+  // In the group currency's minor unit.
   amount: number;
   from: number;
   to: number;
@@ -46,6 +48,27 @@ interface registerDevicePayload {
   subscription_id: string;
   // Every group the device follows; groups left out are unregistered.
   group_ids: number[];
+}
+
+interface getGroupsPayload {
+  group_ids: number[];
+}
+
+interface updateGroupPayload {
+  group_id: number;
+  // Each is optional; only the fields sent are changed.
+  name?: string;
+  // currency_decimals is sent exactly when currency is.
+  currency?: string;
+  currency_decimals?: number;
+}
+
+interface GroupSummary {
+  id: number;
+  name: string;
+  currency: string;
+  // Decimals of the currency's minor unit: the scale of the group's amounts.
+  currency_decimals: number;
 }
 
 interface User {
@@ -75,6 +98,9 @@ export {
   savePaymentPayload,
   getAllTransactionInGroupPayload,
   registerDevicePayload,
+  getGroupsPayload,
+  updateGroupPayload,
+  GroupSummary,
   User,
   IdempotentResult,
   IdempotentBatchResult,

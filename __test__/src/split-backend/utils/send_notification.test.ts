@@ -52,6 +52,7 @@ describe('SEND NOTIFICATION TEST', () => {
   test("targets the group's registered devices by subscription id", async () => {
     (getNotificationTarget as Mock).mockResolvedValue({
       group_name: 'Manali Trip',
+      currency: 'INR',
       subscription_ids: [sub(1), sub(2)],
     });
 
@@ -75,9 +76,50 @@ describe('SEND NOTIFICATION TEST', () => {
     expect(bodyOf(0)).not.toHaveProperty('filters');
   });
 
+  test('can target a group directly with a whole heading', async () => {
+    (getNotificationTarget as Mock).mockResolvedValue({
+      group_name: 'Manali 2026',
+      currency: 'INR',
+      subscription_ids: [sub(1)],
+    });
+
+    await send_push_notification({
+      group_id: 42,
+      headings: ({ name }) => `Renamed to ${name}`,
+      title: '"Manali Trip" is now "Manali 2026"',
+    });
+
+    expect(getNotificationTarget).toHaveBeenCalledWith({ group_id: 42 });
+    expect(bodyOf(0)).toMatchObject({
+      include_subscription_ids: [sub(1)],
+      headings: { en: 'Renamed to Manali 2026' },
+      contents: { en: '"Manali Trip" is now "Manali 2026"' },
+    });
+  });
+
+  test("formats a text function with the group's name and currency", async () => {
+    (getNotificationTarget as Mock).mockResolvedValue({
+      group_name: 'Tokyo',
+      currency: 'JPY',
+      subscription_ids: [sub(1)],
+    });
+
+    await send_push_notification({
+      user_id: 7,
+      headings: 'New Payment',
+      title: ({ name, currency }) => `${currency} payment in ${name}`,
+    });
+
+    expect(bodyOf(0)).toMatchObject({
+      headings: { en: 'New Payment in Tokyo' },
+      contents: { en: 'JPY payment in Tokyo' },
+    });
+  });
+
   test('sends nothing when the group has no registered devices', async () => {
     (getNotificationTarget as Mock).mockResolvedValue({
       group_name: 'Manali Trip',
+      currency: 'INR',
       subscription_ids: [],
     });
     await send_push_notification(expense);
@@ -87,6 +129,7 @@ describe('SEND NOTIFICATION TEST', () => {
   test('skips malformed ids rather than lose the whole notification', async () => {
     (getNotificationTarget as Mock).mockResolvedValue({
       group_name: 'Manali Trip',
+      currency: 'INR',
       subscription_ids: [sub(1), 'zz-verify-sub', sub(2)],
     });
 
@@ -102,6 +145,7 @@ describe('SEND NOTIFICATION TEST', () => {
   test('sends nothing when every id is malformed', async () => {
     (getNotificationTarget as Mock).mockResolvedValue({
       group_name: 'Manali Trip',
+      currency: 'INR',
       subscription_ids: ['zz-verify-sub'],
     });
     await send_push_notification(expense);
@@ -121,6 +165,7 @@ describe('SEND NOTIFICATION TEST', () => {
     );
     (getNotificationTarget as Mock).mockResolvedValue({
       group_name: 'Big Group',
+      currency: 'INR',
       subscription_ids,
     });
 
@@ -135,6 +180,7 @@ describe('SEND NOTIFICATION TEST', () => {
   test('logs a OneSignal error response', async () => {
     (getNotificationTarget as Mock).mockResolvedValue({
       group_name: 'Manali Trip',
+      currency: 'INR',
       subscription_ids: [sub(1)],
     });
     (fetch as unknown as Mock).mockResolvedValueOnce({

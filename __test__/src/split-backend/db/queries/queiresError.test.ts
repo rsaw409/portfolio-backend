@@ -45,9 +45,9 @@ describe('TEST split-backend queries', () => {
   });
 
   test('TEST Create Group ', async () => {
-    await expect(createGroup({ name: 'test' })).rejects.toThrow(
-      'DB not initialized'
-    );
+    await expect(
+      createGroup({ name: 'test', currency_decimals: 2 })
+    ).rejects.toThrow('DB not initialized');
   });
 
   test('TEST getOverviewDataInGroup', async () => {

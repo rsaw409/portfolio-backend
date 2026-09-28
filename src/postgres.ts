@@ -7,7 +7,7 @@ import connectToSplitDB from './split-backend/db/postgres.js';
 
 /**
  * node-postgres returns BIGINT (int8) as a string, since it can exceed
- * Number.MAX_SAFE_INTEGER. Amounts are stored in paise and stay far below that,
+ * Number.MAX_SAFE_INTEGER. Amounts are stored in minor units (paise) and stay far below that,
  * so return a number — and fail loudly rather than round if one ever does not.
  * This also turns count(*) results, which are int8, into numbers.
  */

@@ -55,34 +55,52 @@ select group_id from wanted order by ord`,
 
 interface NotificationTarget {
   group_name: string;
+  // The group's ISO 4217 code and its stored scale, for formatting amounts.
+  currency: string;
+  currency_decimals: number;
   subscription_ids: string[];
 }
 
 /**
- * The group a user belongs to, and every device following that group.
- * Undefined when the user does not exist. The name comes from the database,
- * never the request, so a rename is reflected straight away.
+ * The group to notify, and every device following it: either the group of
+ * `user_id` (the user who made a change) or `group_id` itself. Undefined when
+ * there is no such user or group. The name comes from the database, never the
+ * request, so a rename is reflected straight away.
  */
-const getNotificationTarget = async ({
-  user_id,
-}: {
-  user_id: number;
-}): Promise<NotificationTarget | undefined> => {
+const getNotificationTarget = async (
+  by: { user_id: number } | { group_id: number }
+): Promise<NotificationTarget | undefined> => {
   if (!sequelize) throw new Error('DB not initialized');
 
-  const rows: Array<{ group_name: string; subscription_id: string | null }> =
-    await sequelize.query(
-      `select g.name as group_name, d.subscription_id
+  // Either way: the group, then its devices (none gives one row of NULL).
+  const sql =
+    'user_id' in by
+      ? `select g.name as group_name, g.currency, g.currency_decimals, d.subscription_id
 from ${schemaname}.users u
 join ${schemaname}.groups g on g.id = u.group_id
 left join ${schemaname}.device_groups d on d.group_id = g.id
-where u.id = :user_id`,
-      { type: QueryTypes.SELECT, replacements: { user_id } }
-    );
+where u.id = :id`
+      : `select g.name as group_name, g.currency, g.currency_decimals, d.subscription_id
+from ${schemaname}.groups g
+left join ${schemaname}.device_groups d on d.group_id = g.id
+where g.id = :id`;
+  const id = 'user_id' in by ? by.user_id : by.group_id;
+
+  const rows: Array<{
+    group_name: string;
+    currency: string;
+    currency_decimals: number;
+    subscription_id: string | null;
+  }> = await sequelize.query(sql, {
+    type: QueryTypes.SELECT,
+    replacements: { id },
+  });
 
   if (rows.length === 0) return undefined;
   return {
     group_name: rows[0].group_name,
+    currency: rows[0].currency,
+    currency_decimals: rows[0].currency_decimals,
     subscription_ids: rows
       .map((row) => row.subscription_id)
       .filter((id): id is string => id !== null),

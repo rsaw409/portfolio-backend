@@ -13,7 +13,7 @@ const createTransactionModel = (sequelize: Sequelize, schema: string) => {
         },
         onDelete: 'CASCADE',
       },
-      // In paise. BIGINT comes back from node-postgres as a number; see the
+      // In the group currency's minor unit (paise for INR). BIGINT comes back from node-postgres as a number; see the
       // INT8 type parser in src/postgres.ts.
       amount: {
         type: DataTypes.BIGINT,

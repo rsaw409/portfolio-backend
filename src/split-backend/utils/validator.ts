@@ -23,8 +23,11 @@ const optionalId = z.preprocess((value) => {
 
 const requiredId = z.coerce.number().int();
 
-/** An amount in paise. Whole numbers only: the columns are BIGINT. */
-const paise = z.number().int('must be a whole number of paise');
+/**
+ * An amount in the group currency's smallest unit (paise for INR, yen for
+ * JPY). Whole numbers only: the columns are BIGINT.
+ */
+const minorUnits = z.number().int(ErrorMessage.NotMinorUnits);
 
 /**
  * A tri-state filter: true for payments only, false for expenses only, and
@@ -49,34 +52,92 @@ const nonBlankText = z
   // abort: a blank value gets this message alone, not every later check's.
   .min(1, { error: ErrorMessage.Blank, abort: true });
 
+// The ISO 4217 codes the runtime's Intl knows: the same data that gives each
+// currency its symbol and standard decimals, so all three always agree.
+const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
+
 /**
- * Only INR for now: amounts are paise and notifications print 'INR', so any
- * other currency would be mislabelled. Case-insensitive, so 'inr' is fine.
+ * Any real ISO 4217 code, case-insensitive ('inr' is INR). A made-up code
+ * such as 'XYZ' is rejected, not just a malformed one. App versions released
+ * before per-group currencies read every amount as paise, so the app is to be
+ * updated before groups in other currencies are created.
  */
 const currency = z.preprocess(
   (value) => (typeof value === 'string' ? value.trim().toUpperCase() : value),
-  z.literal('INR', { error: ErrorMessage.CurrencyUnsupported })
+  z
+    .string({ error: ErrorMessage.CurrencyInvalid })
+    .refine((code) => CURRENCIES.has(code), ErrorMessage.CurrencyInvalid)
 );
 
 /**
- * Both new fields are optional so clients that send only a name keep working:
- * such a group is INR with no members, exactly as before.
+ * Decimals of the currency's minor unit, sent by the app: the scale of every
+ * amount in the group (2 for INR, 0 for JPY, 3 for KWD). ISO 4217 goes to 4.
  */
-const createGroupSchema = z.object({
-  name: nonBlankText,
-  currency: currency.default('INR'),
-  members: z
-    .array(nonBlankText, { error: ErrorMessage.NotAList })
-    .default([])
-    // Case-insensitive: 'Rohit' and 'rohit' in one group are the same person
-    // as far as whoever picks a payer from the list can tell.
-    .refine(
-      (names) =>
-        new Set(names.map((n) => n.toLowerCase())).size === names.length,
-      { message: ErrorMessage.MemberRepeated }
-    ),
-  idempotency_key: idempotencyKey,
-});
+const currencyDecimals = z
+  .number({
+    error: (issue) =>
+      issue.input === undefined
+        ? ErrorMessage.Required
+        : ErrorMessage.DecimalsInvalid,
+  })
+  .int(ErrorMessage.DecimalsInvalid)
+  .min(0, ErrorMessage.DecimalsInvalid)
+  .max(4, ErrorMessage.DecimalsInvalid);
+
+/**
+ * The decimals ISO 4217 (as the runtime's Intl data has it) gives `currency`:
+ * 2 for INR, 0 for JPY, 3 for KWD.
+ */
+const standardDecimals = (currency: string) =>
+  new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions()
+    .maximumFractionDigits ?? 2;
+
+/**
+ * The app sends currency_decimals, but it must be the currency's standard
+ * value: it becomes the permanent scale of the group's amounts once the group
+ * has any, so a wrong value from a buggy client must not get that far.
+ */
+const checkDecimalsMatch = (
+  body: { currency?: string; currency_decimals?: number },
+  ctx: z.RefinementCtx
+) => {
+  // zod runs this even when a field already failed; an unknown currency has
+  // its own error and no standard to compare with (Intl would throw).
+  if (
+    body.currency === undefined ||
+    body.currency_decimals === undefined ||
+    !CURRENCIES.has(body.currency)
+  ) {
+    return;
+  }
+  const expected = standardDecimals(body.currency);
+  if (body.currency_decimals !== expected) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['currency_decimals'],
+      message: `${ErrorMessage.DecimalsMismatch} (${expected} for ${body.currency})`,
+    });
+  }
+};
+
+const createGroupSchema = z
+  .object({
+    name: nonBlankText,
+    currency: currency.default('INR'),
+    currency_decimals: currencyDecimals,
+    members: z
+      .array(nonBlankText, { error: ErrorMessage.NotAList })
+      .default([])
+      // Case-insensitive: 'Rohit' and 'rohit' in one group are the same person
+      // as far as whoever picks a payer from the list can tell.
+      .refine(
+        (names) =>
+          new Set(names.map((n) => n.toLowerCase())).size === names.length,
+        { message: ErrorMessage.MemberRepeated }
+      ),
+    idempotency_key: idempotencyKey,
+  })
+  .superRefine(checkDecimalsMatch);
 
 const joinGroupSchema = z.object({
   invite_id: z.string().min(1),
@@ -93,19 +154,19 @@ const groupSchema = z.object({
 
 const transactionPartSchema = z.object({
   user_id: requiredId,
-  amount: paise,
+  amount: minorUnits,
 });
 
 const saveTransactionSchema = z
   .object({
     by: requiredId,
     title: z.string().min(1),
-    totalAmount: paise,
+    totalAmount: minorUnits,
     idempotency_key: idempotencyKey,
     transactionParts: z.array(transactionPartSchema).min(1),
   })
   .refine(
-    // Integer paise sum exactly, so no rounding is needed.
+    // Whole minor units sum exactly, so no rounding is needed.
     (body) =>
       body.transactionParts.reduce((sum, e) => sum + e.amount, 0) ===
       body.totalAmount,
@@ -117,7 +178,7 @@ const saveTransactionSchema = z
 const savePaymentSchema = z.object({
   from: requiredId,
   to: requiredId,
-  amount: paise,
+  amount: minorUnits,
   idempotency_key: idempotencyKey,
 });
 
@@ -148,7 +209,16 @@ const savePaymentsSchema = z
     }
   });
 
-const MAX_GROUPS_PER_DEVICE = 500;
+const MAX_GROUP_IDS = 500;
+
+/**
+ * A list of group ids, as sent by a device for the groups it knows. Repeats
+ * are dropped rather than rejected: they ask for the same thing twice.
+ */
+const groupIdList = z
+  .array(requiredId, { error: ErrorMessage.NotAnIdList })
+  .max(MAX_GROUP_IDS, ErrorMessage.TooManyGroups)
+  .transform((ids) => [...new Set(ids)]);
 
 // OneSignal subscription ids are UUIDs, and OneSignal rejects a whole
 // notification if any id in it is not one.
@@ -157,20 +227,46 @@ const SUBSCRIPTION_ID =
 
 const isSubscriptionId = (value: string) => SUBSCRIPTION_ID.test(value);
 
-/**
- * The complete list of groups a device follows. Repeats are dropped rather
- * than rejected: they ask for the same thing twice.
- */
+/** The complete list of groups a device follows. */
 const registerDeviceSchema = z.object({
   subscription_id: nonBlankText
     .regex(SUBSCRIPTION_ID, ErrorMessage.NotASubscriptionId)
     // One spelling per device, so it maps to one primary-key row.
     .transform((id) => id.toLowerCase()),
-  group_ids: z
-    .array(requiredId, { error: ErrorMessage.NotAnIdList })
-    .max(MAX_GROUPS_PER_DEVICE, ErrorMessage.TooManyGroups)
-    .transform((ids) => [...new Set(ids)]),
+  group_ids: groupIdList,
 });
+
+const getGroupsSchema = z.object({
+  group_ids: groupIdList,
+});
+
+/**
+ * Only the fields sent are changed, under the same rules as createGroup; a
+ * request that would change nothing is rejected rather than silently ignored.
+ */
+const updateGroupSchema = z
+  .object({
+    group_id: requiredId,
+    name: nonBlankText.optional(),
+    currency: currency.optional(),
+    // The scale goes with the currency: required when it is sent, and not
+    // accepted alone.
+    currency_decimals: currencyDecimals.optional(),
+  })
+  .refine((body) => body.name !== undefined || body.currency !== undefined, {
+    message: ErrorMessage.NothingToUpdate,
+  })
+  .refine(
+    (body) =>
+      body.currency === undefined || body.currency_decimals !== undefined,
+    { message: ErrorMessage.Required, path: ['currency_decimals'] }
+  )
+  .refine(
+    (body) =>
+      body.currency_decimals === undefined || body.currency !== undefined,
+    { message: ErrorMessage.DecimalsWithoutCurrency }
+  )
+  .superRefine(checkDecimalsMatch);
 
 const getAllTransactionInGroupSchema = z.object({
   group_id: requiredId,
@@ -208,7 +304,9 @@ export {
   savePaymentsSchema,
   getAllTransactionInGroupSchema,
   registerDeviceSchema,
+  getGroupsSchema,
+  updateGroupSchema,
   isSubscriptionId,
   MAX_KEY_LENGTH,
-  MAX_GROUPS_PER_DEVICE,
+  MAX_GROUP_IDS,
 };

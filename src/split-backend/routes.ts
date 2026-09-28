@@ -10,12 +10,19 @@ import {
   getOverviewDataInGroup,
   savePayments,
   registerDevice,
+  getGroups,
+  updateGroup,
 } from './controller.js';
 
 const addRoutes = (app: Router) => {
   app.post('/createGroup', createGroup);
 
   app.post('/joinGroup', joinGroup);
+
+  // Current details of the groups a device knows, e.g. after a rename.
+  app.post('/getGroups', getGroups);
+
+  app.post('/updateGroup', updateGroup);
 
   app.post('/createUser', createUser);
 

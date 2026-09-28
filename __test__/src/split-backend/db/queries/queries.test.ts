@@ -23,9 +23,9 @@ vi.mock('../../../../../src/postgres.js', () => {
     default: {
       getSequelize: vi.fn(() => {
         return {
-          transaction: vi.fn((fn: Function) => {
-            fn();
-          }),
+          // Awaited and returned like the real one, so an error inside the
+          // callback fails the test instead of escaping as an unhandled one.
+          transaction: vi.fn(async (fn: Function) => fn('T')),
           models: {
             Group: {
               create: vi.fn((p) => {
@@ -85,8 +85,12 @@ vi.mock('../../../../../src/postgres.js', () => {
               }),
             },
           },
-          query: vi.fn((sql, options) => {
+          query: vi.fn(async (sql: string) => {
             expect(typeof sql).toEqual('string');
+            // insertTransaction reads back the row it inserted.
+            return sql.startsWith('insert into')
+              ? [{ dataValues: { id: 1 } }]
+              : [];
           }),
         };
       }),
@@ -109,7 +113,7 @@ describe('TEST split-backend queries', () => {
   });
 
   test('TEST Create Group ', async () => {
-    await createGroup({ name: 'test' });
+    await createGroup({ name: 'test', currency_decimals: 2 });
   });
 
   test('TEST getOverviewDataInGroup', async () => {

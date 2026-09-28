@@ -1,7 +1,12 @@
 import logger from '../../../@rsaw409/logger.js';
 import { ErrorMessage } from '../../../@rsaw409/constant.js';
 import DB from '../../../postgres.js';
-import { Model, QueryTypes, UniqueConstraintError } from 'sequelize';
+import {
+  Model,
+  QueryTypes,
+  Transaction,
+  UniqueConstraintError,
+} from 'sequelize';
 import {
   getAllTransactionInGroupPayload,
   IdempotentBatchResult,
@@ -12,6 +17,51 @@ import {
 
 const sequelize = DB.getSequelize();
 const schemaname = DB.split_backend;
+
+/**
+ * Inserts a transactions row, but only if every user in `user_ids` exists and
+ * they all belong to one group: an expense or payment never spans groups,
+ * which may keep amounts in different currencies. The check is part of the
+ * INSERT itself, so it costs no extra query; users never change group, so it
+ * cannot go stale before commit. mapToModel returns the same model instance
+ * Transaction.create did. Throws when the check fails, rolling back `t`.
+ */
+const insertTransaction = async (
+  values: {
+    by: number;
+    title: string;
+    amount: number;
+    category: string | null;
+    idempotency_key?: string;
+  },
+  user_ids: number[],
+  t: Transaction
+): Promise<Model> => {
+  const [row] = (await sequelize.query(
+    `insert into ${schemaname}.transactions
+  (by, title, amount, category, idempotency_key, created_at, updated_at)
+select $by::int, $title::text, $amount::bigint, $category::text,
+  $idempotency_key::text, now(), now()
+where (
+  select count(*) = cardinality($user_ids::int[]) and count(distinct group_id) = 1
+  from ${schemaname}.users
+  where id = any($user_ids::int[])
+)
+returning *`,
+    {
+      model: sequelize.models.Transaction,
+      mapToModel: true,
+      bind: {
+        ...values,
+        idempotency_key: values.idempotency_key ?? null,
+        user_ids: [...new Set(user_ids)],
+      },
+      transaction: t,
+    }
+  )) as Model[];
+  if (!row) throw new Error(ErrorMessage.UsersNotInOneGroup);
+  return row;
+};
 
 /**
  * The transaction already written under this key, if there is one. Undefined
@@ -37,14 +87,16 @@ const saveTransaction = async (
     }
 
     const result = await sequelize.transaction(async (t) => {
-      const transaction = await sequelize.models.Transaction.create(
+      const transaction = await insertTransaction(
         {
           by: payload.by,
           title: payload.title,
           amount: payload.totalAmount,
+          category: null,
           idempotency_key: idempotencyKey,
         },
-        { transaction: t }
+        [payload.by, ...payload.transactionParts.map((part) => part.user_id)],
+        t
       );
 
       const transaction_parts = payload.transactionParts.map((e: any) => {
@@ -83,7 +135,7 @@ const writePayment = async (
   const idempotencyKey = payment.idempotency_key;
   try {
     const result = await sequelize.transaction(async (t) => {
-      const transaction = await sequelize.models.Transaction.create(
+      const transaction = await insertTransaction(
         {
           by: payment.from,
           title: 'payment',
@@ -91,7 +143,8 @@ const writePayment = async (
           category: 'payment',
           idempotency_key: idempotencyKey,
         },
-        { transaction: t }
+        [payment.from, payment.to],
+        t
       );
 
       await sequelize.models.TransactionPart.create(

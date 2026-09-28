@@ -84,6 +84,7 @@ const { createGroup } =
 const trip = {
   name: 'Manali Trip',
   currency: 'INR',
+  currency_decimals: 2,
   members: ['Rohit', 'Priya', 'Aman'],
 };
 

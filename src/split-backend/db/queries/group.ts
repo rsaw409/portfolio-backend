@@ -1,8 +1,19 @@
-import { Model, QueryTypes, UniqueConstraintError } from 'sequelize';
+import {
+  DatabaseError,
+  Model,
+  QueryTypes,
+  UniqueConstraintError,
+} from 'sequelize';
 import DB from '../../../postgres.js';
 import logger from '../../../@rsaw409/logger.js';
 import { ErrorMessage } from '../../../@rsaw409/constant.js';
-import { createGroupPayload, IdempotentResult } from '../../../types/split.js';
+import {
+  createGroupPayload,
+  getGroupsPayload,
+  updateGroupPayload,
+  GroupSummary,
+  IdempotentResult,
+} from '../../../types/split.js';
 
 const sequelize = DB.getSequelize();
 const schemaname = DB.split_backend;
@@ -49,6 +60,7 @@ const createGroup = async (
         {
           name: payload.name,
           currency: payload.currency,
+          currency_decimals: payload.currency_decimals,
           idempotency_key: idempotencyKey,
         },
         { transaction: t }
@@ -88,8 +100,135 @@ const getGroup = async ({ group_id }: { group_id: number }) => {
   }
 };
 
+/**
+ * The current id, name, currency and currency_decimals of each listed group that exists, in
+ * request order. Unknown ids are left out rather than failing the rest.
+ */
+const getGroups = async ({
+  group_ids,
+}: getGroupsPayload): Promise<GroupSummary[]> => {
+  if (!sequelize) throw new Error('DB not initialized');
+  if (group_ids.length === 0) return [];
+
+  const rows = (await sequelize.models.Group.findAll({
+    where: { id: group_ids },
+    attributes: ['id', 'name', 'currency', 'currency_decimals'],
+    raw: true,
+  })) as unknown as GroupSummary[];
+
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return group_ids
+    .map((id) => byId.get(id))
+    .filter((row): row is GroupSummary => row !== undefined);
+};
+
+// How long a currency change may wait for writes in flight; see updateGroup.
+const LOCK_TIMEOUT = '2s';
+
+/** Postgres's lock_not_available, raised when lock_timeout expires. */
+const isLockTimeout = (error: unknown) =>
+  error instanceof DatabaseError &&
+  (error.parent as { code?: string }).code === '55P03';
+
+interface UpdatedGroup {
+  group: GroupSummary;
+  // The values just before this update, so callers can tell what changed.
+  previous: { name: string; currency: string; currency_decimals: number };
+}
+
+/**
+ * Changes the fields given and returns the group as it now is along with its
+ * previous values, or undefined when there is no such group. A field left out
+ * keeps its value.
+ *
+ * The currency and its decimals can only change while the group has no
+ * expenses or payments: amounts are stored without either, so existing ones
+ * would be relabelled or rescaled.
+ * For a currency change, transactions is locked in SHARE mode before the
+ * check. That waits for writes already in flight to commit, and holds new ones
+ * at their INSERT until this commits, so a first expense can never slip in
+ * between the check and the update. The check is its own statement so that,
+ * under READ COMMITTED, it sees what committed while we waited. Every group's
+ * writes pause for those few milliseconds, which only a currency change pays;
+ * renames and the write paths take no extra lock.
+ *
+ * Postgres queues locks, so while LOCK TABLE waits behind a slow write, new
+ * writes in every group queue behind it. LOCK_TIMEOUT bounds that: past it the
+ * change gives up with ErrorMessage.GroupBusy and the queue drains.
+ */
+const updateGroup = async ({
+  group_id,
+  name,
+  currency,
+  currency_decimals,
+}: updateGroupPayload): Promise<UpdatedGroup | undefined> => {
+  if (!sequelize) throw new Error('DB not initialized');
+
+  return sequelize.transaction(async (t) => {
+    const [current] = (await sequelize.query(
+      `select name, currency, currency_decimals from ${schemaname}.groups
+where id = $group_id
+for update`,
+      { type: QueryTypes.SELECT, bind: { group_id }, transaction: t }
+    )) as Array<{ name: string; currency: string; currency_decimals: number }>;
+    if (!current) return undefined;
+
+    // A new currency or a new scale both reinterpret stored amounts.
+    const scaleChanges =
+      currency !== undefined &&
+      (currency !== current.currency ||
+        currency_decimals !== current.currency_decimals);
+    if (scaleChanges) {
+      // SET LOCAL lasts until this transaction ends, and only it.
+      await sequelize.query(`set local lock_timeout = '${LOCK_TIMEOUT}'`, {
+        transaction: t,
+      });
+      try {
+        await sequelize.query(
+          `lock table ${schemaname}.transactions in share mode`,
+          { transaction: t }
+        );
+      } catch (error) {
+        if (isLockTimeout(error)) throw new Error(ErrorMessage.GroupBusy);
+        throw error;
+      }
+      const [{ used }] = (await sequelize.query(
+        `select exists (
+  select 1 from ${schemaname}.transactions tx
+  join ${schemaname}.users u on u.id = tx.by
+  where u.group_id = $group_id
+) as used`,
+        { type: QueryTypes.SELECT, bind: { group_id }, transaction: t }
+      )) as Array<{ used: boolean }>;
+      if (used) throw new Error(ErrorMessage.CurrencyLocked);
+    }
+
+    const [group] = (await sequelize.query(
+      `update ${schemaname}.groups
+set name = coalesce($name::text, name),
+    currency = coalesce($currency::text, currency),
+    currency_decimals = coalesce($currency_decimals::smallint, currency_decimals),
+    updated_at = now()
+where id = $group_id
+returning id, name, currency, currency_decimals`,
+      {
+        type: QueryTypes.SELECT,
+        // null, not undefined: an unset bind would be left in the SQL as-is.
+        bind: {
+          group_id,
+          name: name ?? null,
+          currency: currency ?? null,
+          currency_decimals: currency_decimals ?? null,
+        },
+        transaction: t,
+      }
+    )) as GroupSummary[];
+    return { group, previous: current };
+  });
+};
+
 // sum() over BIGINT yields NUMERIC, which node-postgres returns as a string;
-// casting back keeps balances a number of paise.
+// casting back keeps balances a number of minor units.
 const getOverviewDataInGroup = async ({ group_id }: { group_id: number }) => {
   const query = `select A.name, A.id as user_id, 
 (coalesce(B.total_pos,0) - coalesce(C.total_neg,0)) as balances, 
@@ -120,4 +259,12 @@ where A.group_id = :group_id`;
   }
 };
 
-export { getGroup, createGroup, getOverviewDataInGroup, GroupWithMembers };
+export {
+  getGroup,
+  getGroups,
+  updateGroup,
+  createGroup,
+  getOverviewDataInGroup,
+  GroupWithMembers,
+  UpdatedGroup,
+};

@@ -3,7 +3,10 @@ import logger from '../@rsaw409/logger.js';
 import {
   createGroup as createGroupInDB,
   getGroup as getGroupInDB,
+  getGroups as getGroupsInDB,
+  updateGroup as updateGroupInDB,
   getOverviewDataInGroup as getOverviewDataInGroupFromDb,
+  UpdatedGroup,
 } from './db/queries/group.js';
 import {
   saveTransaction as saveTransactionInDB,
@@ -18,6 +21,7 @@ import {
 import { registerDevice as registerDeviceInDB } from './db/queries/device.js';
 import crypto from '../@rsaw409/crypto.js';
 import { send_push_notification } from './utils/send_notification.js';
+import { formatAmount } from './utils/format_amount.js';
 import {
   parse,
   createGroupSchema,
@@ -29,11 +33,16 @@ import {
   savePaymentsSchema,
   getAllTransactionInGroupSchema,
   registerDeviceSchema,
+  getGroupsSchema,
+  updateGroupSchema,
 } from './utils/validator.js';
 import {
   createGroupPayload,
   createUserPayload,
   getAllTransactionInGroupPayload,
+  getGroupsPayload,
+  GroupSummary,
+  updateGroupPayload,
   joinGroupPayload,
   registerDevicePayload,
   savePaymentPayload,
@@ -41,9 +50,6 @@ import {
 } from '../types/split.js';
 
 import { ErrorMessage } from '../@rsaw409/constant.js';
-
-/** Paise as a rupee string for display, e.g. 12050 -> '120.50'. */
-const formatRupees = (paise: number) => (paise / 100).toFixed(2);
 
 const createGroup = async (
   req: Request<{}, {}, createGroupPayload>,
@@ -60,6 +66,7 @@ const createGroup = async (
       name: group.get('name'),
       inviteId: crypto.encryptDeterministic(`${group.get('id')}`),
       currency: group.get('currency'),
+      currency_decimals: group.get('currency_decimals'),
       members: members.map((member) => {
         return { user_id: member.get('id'), name: member.get('name') };
       }),
@@ -92,6 +99,98 @@ const joinGroup = async (
     const inviteId = crypto.encryptDeterministic(`${response.id}`);
 
     return res.status(200).send({ ...response, inviteId });
+  } catch (error: unknown) {
+    logger.error(error);
+    let message = ErrorMessage.Unknown;
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    res.status(400).send({ message: message });
+  }
+};
+
+/** A group as getGroups and updateGroup return it. */
+const groupResponse = ({
+  id,
+  name,
+  currency,
+  currency_decimals,
+}: GroupSummary) => {
+  return {
+    id,
+    name,
+    inviteId: crypto.encryptDeterministic(`${id}`),
+    currency,
+    currency_decimals,
+  };
+};
+
+/**
+ * How members' apps pick up changes to their groups, such as a rename: the
+ * current details of each listed group, leaving out ids that do not exist.
+ */
+const getGroups = async (
+  req: Request<{}, {}, getGroupsPayload>,
+  res: Response
+) => {
+  try {
+    const groups = await getGroupsInDB(parse(getGroupsSchema, req.body));
+    return res.status(200).send(groups.map(groupResponse));
+  } catch (error: unknown) {
+    logger.error(error);
+    let message = ErrorMessage.Unknown;
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    res.status(400).send({ message: message });
+  }
+};
+
+/** The push text for a group update, or undefined when nothing changed. */
+const groupUpdateNotification = ({ group, previous }: UpdatedGroup) => {
+  const renamed = group.name !== previous.name;
+  const currencyChanged =
+    group.currency !== previous.currency ||
+    group.currency_decimals !== previous.currency_decimals;
+  if (!renamed && !currencyChanged) return undefined;
+
+  const changes = [
+    ...(renamed ? [`"${previous.name}" is now "${group.name}"`] : []),
+    ...(currencyChanged ? [`Currency is now ${group.currency}`] : []),
+  ];
+  return {
+    headings: renamed && !currencyChanged ? 'Group Renamed' : 'Group Updated',
+    title: changes.join('. '),
+  };
+};
+
+/**
+ * Renames a group or changes its currency, and tells the group's devices when
+ * something actually changed. Their apps pick the new details up through
+ * getGroups.
+ */
+const updateGroup = async (
+  req: Request<{}, {}, updateGroupPayload>,
+  res: Response
+) => {
+  try {
+    const updated = await updateGroupInDB(parse(updateGroupSchema, req.body));
+    if (!updated) {
+      throw new Error(ErrorMessage.GroupNotFound);
+    }
+    const { group } = updated;
+
+    const notification = groupUpdateNotification(updated);
+    if (notification) {
+      send_push_notification({
+        group_id: group.id,
+        // The whole heading: '... in <new name>' would read oddly for a rename.
+        headings: () => notification.headings,
+        title: notification.title,
+      });
+    }
+
+    return res.status(200).send(groupResponse(group));
   } catch (error: unknown) {
     logger.error(error);
     let message = ErrorMessage.Unknown;
@@ -156,7 +255,8 @@ const savePayment = async (
       send_push_notification({
         user_id: payload.from,
         headings: 'New Payment',
-        title: `INR ${formatRupees(payload.amount)}`,
+        title: ({ currency, currency_decimals }) =>
+          formatAmount(payload.amount, currency, currency_decimals),
       });
     }
     return res.status(200).send(result);
@@ -185,7 +285,8 @@ const savePayments = async (
         send_push_notification({
           user_id: e.from,
           headings: 'New Payment',
-          title: `INR ${formatRupees(e.amount)}`,
+          title: ({ currency, currency_decimals }) =>
+            formatAmount(e.amount, currency, currency_decimals),
         });
       }
     });
@@ -280,6 +381,8 @@ const registerDevice = async (
 
 export {
   registerDevice,
+  getGroups,
+  updateGroup,
   joinGroup,
   createGroup,
   createUser,

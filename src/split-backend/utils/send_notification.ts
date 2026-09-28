@@ -9,6 +9,12 @@ const ONESIGNAL_APP_ID = 'e6cdb8fb-192b-4a0e-81e1-5762f7e0b630';
 // OneSignal's limit on include_subscription_ids per request.
 const MAX_SUBSCRIPTIONS_PER_CALL = 20000;
 
+interface NotifiedGroup {
+  name: string;
+  currency: string;
+  currency_decimals: number;
+}
+
 const chunk = <T>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -18,24 +24,28 @@ const chunk = <T>(items: T[], size: number): T[][] => {
 };
 
 /**
- * Notifies every device following the group of `user_id` (the user who made
- * the change). The backend decides who gets it from device_groups; nothing is
- * targeted by OneSignal tag any more.
+ * Notifies every device following a group: the group of `user_id` (the user
+ * who made the change), or `group_id` itself. The backend decides who gets it
+ * from device_groups; nothing is targeted by OneSignal tag any more.
+ *
+ * A string heading reads '<headings> in <group name>'. Either the heading or
+ * the text can instead be a function of the group as it is in the database
+ * (its current name, currency and currency_decimals), returning the whole string; amounts are
+ * formatted that way, in the group's currency.
  *
  * Fire-and-forget: it never throws, so callers need not await it, and a
  * notification failure never fails the write that triggered it.
  */
 const send_push_notification = async ({
-  user_id,
   headings,
   title,
-}: {
-  user_id: number;
-  headings: string;
-  title: string;
+  ...by
+}: ({ user_id: number } | { group_id: number }) & {
+  headings: string | ((group: NotifiedGroup) => string);
+  title: string | ((group: NotifiedGroup) => string);
 }): Promise<void> => {
   try {
-    const target = await getNotificationTarget({ user_id });
+    const target = await getNotificationTarget(by);
     if (!target) return;
 
     // registerDevice only accepts UUIDs, but one malformed id left in the table
@@ -51,6 +61,17 @@ const send_push_notification = async ({
     }
     if (valid.length === 0) return;
 
+    const group = {
+      name: target.group_name,
+      currency: target.currency,
+      currency_decimals: target.currency_decimals,
+    };
+    const heading =
+      typeof headings === 'function'
+        ? headings(group)
+        : `${headings} in ${group.name}`;
+    const contents = typeof title === 'function' ? title(group) : title;
+
     for (const subscription_ids of chunk(valid, MAX_SUBSCRIPTIONS_PER_CALL)) {
       const response = await fetch(ONESIGNAL_URL, {
         method: 'POST',
@@ -62,8 +83,8 @@ const send_push_notification = async ({
           app_id: ONESIGNAL_APP_ID,
           target_channel: 'push',
           include_subscription_ids: subscription_ids,
-          headings: { en: `${headings} in ${target.group_name}` },
-          contents: { en: title },
+          headings: { en: heading },
+          contents: { en: contents },
         }),
       });
       const data = await response.json();

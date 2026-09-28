@@ -20,7 +20,7 @@ let nextId = 1;
 // Stands in for split_backend.transactions, enforcing the same unique
 // idempotency_key index the real table has (NULLs never collide).
 const Transaction = {
-  create: vi.fn(async (values: Record<string, any>) => {
+  create: vi.fn(async (values: Record<string, any>, _options?: unknown) => {
     if (
       values.idempotency_key != null &&
       rows.some((r) => r.idempotency_key === values.idempotency_key)
@@ -49,6 +49,23 @@ const Transaction = {
   }),
 };
 
+// Users 1-10 are in group 1, user 50 in group 2; anyone else does not exist.
+const groupOf = (user_id: number) =>
+  user_id >= 1 && user_id <= 10 ? 1 : user_id === 50 ? 2 : undefined;
+
+// Stands in for insertTransaction's INSERT ... SELECT ... WHERE: it writes
+// through Transaction.create above only when every user is in one group.
+const query = vi.fn(async (_sql: string, { bind, transaction }: any) => {
+  const groups = bind.user_ids.map(groupOf);
+  if (groups.includes(undefined) || new Set(groups).size !== 1) return [];
+  const { user_ids: _ids, idempotency_key, ...values } = bind;
+  const row = await Transaction.create(
+    { ...values, idempotency_key: idempotency_key ?? undefined },
+    { transaction }
+  );
+  return [row];
+});
+
 const TransactionPart = {
   create: vi.fn(async () => ({})),
   bulkCreate: vi.fn(async () => []),
@@ -71,6 +88,7 @@ vi.mock('../../../../../src/postgres.js', () => {
             }
           }),
           models: { Transaction, TransactionPart },
+          query,
         };
       }),
       split_backend: 'split_backend',
@@ -260,6 +278,49 @@ describe('TEST idempotent split writes', () => {
     const retry = await savePayments(batchOf('a', 'b', 'c'));
     expect(retry.written).toEqual([false, true, true]);
     expect(rows).toHaveLength(3);
+  });
+
+  test('checks every user in an expense in one statement, without repeats', async () => {
+    await saveTransaction({
+      ...expense,
+      transactionParts: [
+        { user_id: 1, amount: 4000 },
+        { user_id: 2, amount: 6000 },
+      ],
+    });
+    expect(query).toHaveBeenCalledTimes(1);
+    const [sql, options] = query.mock.calls[0];
+    expect(sql).toContain('count(distinct group_id) = 1');
+    expect(options.bind.user_ids).toEqual([1, 2]);
+    expect(options).toMatchObject({ mapToModel: true, transaction: 'T' });
+  });
+
+  test('refuses an expense or payment that spans groups, writing nothing', async () => {
+    await expect(
+      saveTransaction({
+        ...expense,
+        transactionParts: [{ user_id: 50, amount: 10000 }],
+      })
+    ).rejects.toThrow(ErrorMessage.UsersNotInOneGroup);
+    await expect(savePayment({ ...payment, to: 50 })).rejects.toThrow(
+      ErrorMessage.UsersNotInOneGroup
+    );
+    await expect(savePayment({ ...payment, to: 404 })).rejects.toThrow(
+      ErrorMessage.UsersNotInOneGroup
+    );
+    expect(rows).toHaveLength(0);
+    expect(TransactionPart.bulkCreate).not.toHaveBeenCalled();
+    expect(TransactionPart.create).not.toHaveBeenCalled();
+  });
+
+  test('a batch stops at a payment that spans groups, keeping earlier ones', async () => {
+    await expect(
+      savePayments([
+        { ...payment, idempotency_key: 'a' },
+        { ...payment, to: 50, idempotency_key: 'b' },
+      ])
+    ).rejects.toThrow(ErrorMessage.UsersNotInOneGroup);
+    expect(rows.map((r) => r.idempotency_key)).toEqual(['a']);
   });
 
   test('a unique violation unrelated to a key is not swallowed', async () => {

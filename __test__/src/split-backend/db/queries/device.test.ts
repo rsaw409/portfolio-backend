@@ -65,23 +65,42 @@ describe('TEST getNotificationTarget', () => {
 
   test("returns the user's group name and its devices", async () => {
     sqlRows = [
-      { group_name: 'Manali Trip', subscription_id: 'sub-1' },
-      { group_name: 'Manali Trip', subscription_id: 'sub-2' },
+      { group_name: 'Manali Trip', currency: 'INR', subscription_id: 'sub-1' },
+      { group_name: 'Manali Trip', currency: 'INR', subscription_id: 'sub-2' },
     ];
     expect(await getNotificationTarget({ user_id: 5 })).toEqual({
       group_name: 'Manali Trip',
+      currency: 'INR',
       subscription_ids: ['sub-1', 'sub-2'],
     });
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('split_backend.device_groups'),
-      expect.objectContaining({ replacements: { user_id: 5 } })
-    );
+    const [sql, options] = query.mock.calls[0];
+    expect(sql).toContain('split_backend.users u');
+    expect(sql).toContain('split_backend.device_groups');
+    expect(options.replacements).toEqual({ id: 5 });
+  });
+
+  test('can target a group directly', async () => {
+    sqlRows = [
+      { group_name: 'Manali Trip', currency: 'INR', subscription_id: 'sub-1' },
+    ];
+    expect(await getNotificationTarget({ group_id: 9 })).toEqual({
+      group_name: 'Manali Trip',
+      currency: 'INR',
+      subscription_ids: ['sub-1'],
+    });
+    const [sql, options] = query.mock.calls[0];
+    expect(sql).not.toContain('split_backend.users');
+    expect(sql).toContain('where g.id = :id');
+    expect(options.replacements).toEqual({ id: 9 });
   });
 
   test('a group with no devices has no subscription ids', async () => {
-    sqlRows = [{ group_name: 'Quiet Group', subscription_id: null }];
+    sqlRows = [
+      { group_name: 'Quiet Group', currency: 'INR', subscription_id: null },
+    ];
     expect(await getNotificationTarget({ user_id: 5 })).toEqual({
       group_name: 'Quiet Group',
+      currency: 'INR',
       subscription_ids: [],
     });
   });

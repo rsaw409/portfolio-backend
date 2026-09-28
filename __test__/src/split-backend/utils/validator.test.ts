@@ -10,8 +10,10 @@ const {
   savePaymentsSchema,
   getAllTransactionInGroupSchema,
   registerDeviceSchema,
+  getGroupsSchema,
+  updateGroupSchema,
   MAX_KEY_LENGTH,
-  MAX_GROUPS_PER_DEVICE,
+  MAX_GROUP_IDS,
 } = await import('../../../../src/split-backend/utils/validator.js');
 const { ErrorMessage } = await import('../../../../src/@rsaw409/constant.js');
 
@@ -148,12 +150,48 @@ describe('TEST savePayments batch rules', () => {
 });
 
 describe('TEST createGroup payload', () => {
-  test('defaults currency and members for name-only clients', () => {
-    expect(parse(createGroupSchema, { name: 'trip' })).toEqual({
+  test('defaults currency and members', () => {
+    expect(
+      parse(createGroupSchema, { name: 'trip', currency_decimals: 2 })
+    ).toEqual({
       name: 'trip',
       currency: 'INR',
+      currency_decimals: 2,
       members: [],
     });
+  });
+
+  test('requires currency_decimals, a whole number from 0 to 4', () => {
+    expect(() => parse(createGroupSchema, { name: 'trip' })).toThrow(
+      'currency_decimals: is required'
+    );
+    for (const currency_decimals of [-1, 5, 1.5, '2', null]) {
+      expect(() =>
+        parse(createGroupSchema, { name: 'trip', currency_decimals })
+      ).toThrow(`currency_decimals: ${ErrorMessage.DecimalsInvalid}`);
+    }
+  });
+
+  test("currency_decimals must be the currency's standard value", () => {
+    expect(
+      parse(createGroupSchema, { name: 'trip', currency_decimals: 2 })
+    ).toHaveProperty('currency_decimals', 2);
+    for (const currency_decimals of [0, 3, 4]) {
+      expect(() =>
+        parse(createGroupSchema, { name: 'trip', currency_decimals })
+      ).toThrow(
+        `currency_decimals: ${ErrorMessage.DecimalsMismatch} (2 for INR)`
+      );
+    }
+    expect(() =>
+      parse(updateGroupSchema, {
+        group_id: 7,
+        currency: 'INR',
+        currency_decimals: 0,
+      })
+    ).toThrow(
+      `currency_decimals: ${ErrorMessage.DecimalsMismatch} (2 for INR)`
+    );
   });
 
   test('trims the group name and member names', () => {
@@ -161,12 +199,14 @@ describe('TEST createGroup payload', () => {
       parse(createGroupSchema, {
         name: '  Manali Trip ',
         currency: ' inr ',
+        currency_decimals: 2,
         members: [' Rohit', 'Priya '],
         idempotency_key: 'k',
       })
     ).toEqual({
       name: 'Manali Trip',
       currency: 'INR',
+      currency_decimals: 2,
       members: ['Rohit', 'Priya'],
       idempotency_key: 'k',
     });
@@ -182,12 +222,40 @@ describe('TEST createGroup payload', () => {
     );
   });
 
-  test('accepts only INR', () => {
-    for (const currency of ['USD', 'RUPEE', '']) {
-      expect(() => parse(createGroupSchema, { name: 'a', currency })).toThrow(
-        `currency: ${ErrorMessage.CurrencyUnsupported}`
-      );
+  test('accepts any real ISO 4217 code, with its own decimals', () => {
+    for (const [currency, currency_decimals] of [
+      ['USD', 2],
+      ['jpy', 0],
+      [' KWD ', 3],
+      ['EUR', 2],
+    ] as const) {
+      expect(
+        parse(createGroupSchema, { name: 'a', currency, currency_decimals })
+      ).toMatchObject({
+        currency: currency.trim().toUpperCase(),
+        currency_decimals,
+      });
     }
+  });
+
+  test('rejects a made-up, malformed or non-text currency', () => {
+    for (const currency of ['XYZ', 'RUPEE', 'IN', '', 5]) {
+      expect(() =>
+        parse(createGroupSchema, { name: 'a', currency, currency_decimals: 2 })
+      ).toThrow(`currency: ${ErrorMessage.CurrencyInvalid}`);
+    }
+  });
+
+  test("checks decimals against the currency's own standard", () => {
+    expect(() =>
+      parse(createGroupSchema, {
+        name: 'a',
+        currency: 'JPY',
+        currency_decimals: 2,
+      })
+    ).toThrow(
+      `currency_decimals: ${ErrorMessage.DecimalsMismatch} (0 for JPY)`
+    );
   });
 
   test('rejects blank and repeated member names', () => {
@@ -204,17 +272,24 @@ describe('TEST createGroup payload', () => {
 
   test('allows a group with one member or none', () => {
     expect(
-      parse(createGroupSchema, { name: 'a', members: ['Rohit'] })
+      parse(createGroupSchema, {
+        name: 'a',
+        currency_decimals: 2,
+        members: ['Rohit'],
+      })
     ).toHaveProperty('members', ['Rohit']);
-    expect(parse(createGroupSchema, { name: 'a', members: [] })).toHaveProperty(
-      'members',
-      []
-    );
+    expect(
+      parse(createGroupSchema, { name: 'a', currency_decimals: 2, members: [] })
+    ).toHaveProperty('members', []);
   });
 
   test('treats a blank idempotency_key as none', () => {
     expect(
-      parse(createGroupSchema, { name: 'a', idempotency_key: ' ' })
+      parse(createGroupSchema, {
+        name: 'a',
+        currency_decimals: 2,
+        idempotency_key: ' ',
+      })
     ).not.toHaveProperty('idempotency_key', expect.anything());
   });
 });
@@ -275,12 +350,103 @@ describe('TEST registerDevice payload', () => {
 
   test('caps how many groups one device can list', () => {
     const group_ids = Array.from(
-      { length: MAX_GROUPS_PER_DEVICE + 1 },
+      { length: MAX_GROUP_IDS + 1 },
       (_, i) => i + 1
     );
     expect(() =>
       parse(registerDeviceSchema, { subscription_id, group_ids })
     ).toThrow(`group_ids: ${ErrorMessage.TooManyGroups}`);
+  });
+});
+
+describe('TEST getGroups payload', () => {
+  test('coerces ids and drops repeats', () => {
+    expect(parse(getGroupsSchema, { group_ids: [3, '1', 3] })).toEqual({
+      group_ids: [3, 1],
+    });
+  });
+
+  test('accepts an empty list', () => {
+    expect(parse(getGroupsSchema, { group_ids: [] })).toEqual({
+      group_ids: [],
+    });
+  });
+
+  test('rejects a missing or oversized list', () => {
+    expect(() => parse(getGroupsSchema, {})).toThrow(
+      `group_ids: ${ErrorMessage.NotAnIdList}`
+    );
+    expect(() =>
+      parse(getGroupsSchema, {
+        group_ids: Array.from({ length: MAX_GROUP_IDS + 1 }, (_, i) => i + 1),
+      })
+    ).toThrow(`group_ids: ${ErrorMessage.TooManyGroups}`);
+  });
+});
+
+describe('TEST updateGroup payload', () => {
+  test('keeps only the fields sent, trimmed and normalised', () => {
+    expect(parse(updateGroupSchema, { group_id: '7', name: ' Goa ' })).toEqual({
+      group_id: 7,
+      name: 'Goa',
+    });
+    expect(
+      parse(updateGroupSchema, {
+        group_id: 7,
+        currency: 'inr',
+        currency_decimals: 2,
+      })
+    ).toEqual({ group_id: 7, currency: 'INR', currency_decimals: 2 });
+  });
+
+  test('currency and currency_decimals go together', () => {
+    expect(() =>
+      parse(updateGroupSchema, { group_id: 7, currency: 'INR' })
+    ).toThrow('currency_decimals: is required');
+    expect(() =>
+      parse(updateGroupSchema, { group_id: 7, currency_decimals: 2 })
+    ).toThrow(ErrorMessage.DecimalsWithoutCurrency);
+    expect(() =>
+      parse(updateGroupSchema, {
+        group_id: 7,
+        name: 'Goa',
+        currency_decimals: 2,
+      })
+    ).toThrow(ErrorMessage.DecimalsWithoutCurrency);
+    expect(() =>
+      parse(updateGroupSchema, {
+        group_id: 7,
+        currency: 'INR',
+        currency_decimals: 9,
+      })
+    ).toThrow(`currency_decimals: ${ErrorMessage.DecimalsInvalid}`);
+  });
+
+  test('applies the createGroup rules to each field', () => {
+    expect(() =>
+      parse(updateGroupSchema, { group_id: 7, name: '   ' })
+    ).toThrow('name: must not be blank');
+    expect(() =>
+      parse(updateGroupSchema, {
+        group_id: 7,
+        currency: 'XYZ',
+        currency_decimals: 2,
+      })
+    ).toThrow(`currency: ${ErrorMessage.CurrencyInvalid}`);
+    expect(
+      parse(updateGroupSchema, {
+        group_id: 7,
+        currency: 'usd',
+        currency_decimals: 2,
+      })
+    ).toEqual({ group_id: 7, currency: 'USD', currency_decimals: 2 });
+  });
+
+  test('needs a group_id and something to change', () => {
+    expect(() => parse(updateGroupSchema, { name: 'Goa' })).toThrow(/group_id/);
+    expect(() => parse(updateGroupSchema, { group_id: 7 })).toThrow(
+      ErrorMessage.NothingToUpdate
+    );
   });
 });
 
@@ -311,7 +477,7 @@ describe('TEST required fields', () => {
     expect(parse(saveTransactionSchema, expense()).totalAmount).toEqual(10000);
   });
 
-  test('sums parts exactly in paise', () => {
+  test('sums parts exactly in minor units', () => {
     // 1000 rupees six ways: the split that drifted as float rupees.
     const parts = [16667, 16667, 16667, 16667, 16666, 16666].map(
       (amount, user_id) => ({ user_id, amount })
@@ -331,10 +497,10 @@ describe('TEST required fields', () => {
   });
 });
 
-describe('TEST amounts are whole paise', () => {
+describe('TEST amounts are whole minor units', () => {
   test('rejects a fractional payment amount', () => {
     expect(() => parse(savePaymentSchema, payment({ amount: 50.5 }))).toThrow(
-      /amount: must be a whole number of paise/
+      /amount: must be a whole number in the smallest currency unit/
     );
   });
 
@@ -347,7 +513,9 @@ describe('TEST amounts are whole paise', () => {
           transactionParts: [{ user_id: 2, amount: 100.5 }],
         })
       )
-    ).toThrow(/totalAmount: must be a whole number of paise/);
+    ).toThrow(
+      /totalAmount: must be a whole number in the smallest currency unit/
+    );
     expect(() =>
       parse(
         saveTransactionSchema,

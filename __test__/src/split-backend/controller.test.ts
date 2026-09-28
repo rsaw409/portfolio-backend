@@ -14,6 +14,8 @@ vi.mock('../../../src/split-backend/db/queries/group.js', () => {
   return {
     createGroup: vi.fn(),
     getGroup: vi.fn(),
+    getGroups: vi.fn(),
+    updateGroup: vi.fn(),
     getOverviewDataInGroup: vi.fn(),
   };
 });
@@ -58,6 +60,8 @@ vi.mock('../../../src/split-backend/utils/send_notification.js', () => {
 const {
   createGroup: createGroupInDB,
   getGroup: getGroupInDB,
+  getGroups: getGroupsInDB,
+  updateGroup: updateGroupInDB,
   getOverviewDataInGroup: getOverviewDataInGroupFromDb,
 } = await import('../../../src/split-backend/db/queries/group.js');
 
@@ -92,6 +96,8 @@ const {
   savePayments,
   saveTransaction,
   registerDevice,
+  getGroups,
+  updateGroup,
 } = await import('../../../src/split-backend/controller.js');
 
 /** A stand-in for a Sequelize model instance. */
@@ -129,22 +135,29 @@ describe('Testing Controllers', () => {
     let req = {
       body: {
         name: 'test-group',
+        currency_decimals: 2,
       },
     } as any as Request;
     (createGroupInDB as Mock).mockImplementation(() => {
       return {
         result: {
-          group: row({ id: 1, name: 'test-group', currency: 'INR' }),
+          group: row({
+            id: 1,
+            name: 'test-group',
+            currency: 'INR',
+            currency_decimals: 2,
+          }),
           members: [],
         },
         replayed: false,
       };
     });
     await createGroup(req, res);
-    // Older clients send only a name and get an INR group with no members.
+    // Without currency or members: an INR group with no members.
     expect(createGroupInDB).toHaveBeenCalledWith({
       name: 'test-group',
       currency: 'INR',
+      currency_decimals: 2,
       members: [],
     });
     expect(crypto.encryptDeterministic).toHaveBeenCalled();
@@ -152,18 +165,34 @@ describe('Testing Controllers', () => {
     expect(res.send).toHaveBeenCalled();
   });
 
+  test('createGroup requires currency_decimals', async () => {
+    let req = { body: { name: 'test-group' } } as any as Request;
+    await createGroup(req, res);
+    expect(createGroupInDB).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: 'currency_decimals: is required',
+    });
+  });
+
   test('createGroup returns the group with its members', async () => {
     let req = {
       body: {
         name: 'Manali Trip',
         currency: 'inr',
+        currency_decimals: 2,
         members: ['Rohit', ' Priya '],
         idempotency_key: 'k1',
       },
     } as any as Request;
     (createGroupInDB as Mock).mockResolvedValue({
       result: {
-        group: row({ id: 42, name: 'Manali Trip', currency: 'INR' }),
+        group: row({
+          id: 42,
+          name: 'Manali Trip',
+          currency: 'INR',
+          currency_decimals: 2,
+        }),
         members: [
           row({ id: 101, name: 'Rohit', group_id: 42 }),
           row({ id: 102, name: 'Priya', group_id: 42 }),
@@ -176,6 +205,7 @@ describe('Testing Controllers', () => {
     expect(createGroupInDB).toHaveBeenCalledWith({
       name: 'Manali Trip',
       currency: 'INR',
+      currency_decimals: 2,
       members: ['Rohit', 'Priya'],
       idempotency_key: 'k1',
     });
@@ -187,6 +217,7 @@ describe('Testing Controllers', () => {
       name: 'Manali Trip',
       inviteId: 'enc-42',
       currency: 'INR',
+      currency_decimals: 2,
       members: [
         { user_id: 101, name: 'Rohit' },
         { user_id: 102, name: 'Priya' },
@@ -378,13 +409,21 @@ describe('Testing Controllers', () => {
     expect(send_push_notification).toHaveBeenCalledWith({
       user_id: 1,
       headings: 'New Payment',
-      title: 'INR 100.00',
+      title: expect.any(Function),
     });
+    // The text is formatted in the group's currency, looked up when sending.
+    const { title } = (send_push_notification as Mock).mock.calls[0][0];
+    expect(title({ name: 'Trip', currency: 'INR', currency_decimals: 2 })).toBe(
+      '₹100.00'
+    );
+    expect(title({ name: 'Trip', currency: 'JPY', currency_decimals: 0 })).toBe(
+      '¥10,000'
+    );
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalledWith({ id: 1 });
   });
 
-  test('savePayment rejects a fractional amount of paise', async () => {
+  test('savePayment rejects a fractional amount', async () => {
     let req = {
       body: { from: '1', to: '2', amount: 100.5 },
     } as any as Request;
@@ -393,7 +432,7 @@ describe('Testing Controllers', () => {
     expect(send_push_notification).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.send).toHaveBeenCalledWith({
-      message: 'amount: must be a whole number of paise',
+      message: `amount: ${ErrorMessage.NotMinorUnits}`,
     });
   });
 
@@ -489,9 +528,11 @@ describe('Testing Controllers', () => {
     });
     await savePayments(req, res);
     expect(send_push_notification).toHaveBeenCalledTimes(1);
-    expect(send_push_notification).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 2, title: 'INR 50.00' })
-    );
+    const [[call]] = (send_push_notification as Mock).mock.calls;
+    expect(call.user_id).toBe(2);
+    expect(
+      call.title({ name: 'Trip', currency: 'INR', currency_decimals: 2 })
+    ).toBe('₹50.00');
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }]);
   });
@@ -624,6 +665,211 @@ describe('Testing Controllers', () => {
     expect(send_push_notification).toHaveBeenCalledWith(
       expect.not.objectContaining({ groupName: expect.anything() })
     );
+  });
+
+  test('getGroups returns each known group with its invite id', async () => {
+    let req = { body: { group_ids: [2, '1', 2, 99] } } as any as Request;
+    (getGroupsInDB as Mock).mockResolvedValue([
+      { id: 2, name: 'Goa', currency: 'INR', currency_decimals: 2 },
+      { id: 1, name: 'Manali Trip', currency: 'INR', currency_decimals: 2 },
+    ]);
+    (crypto.encryptDeterministic as Mock).mockImplementation(
+      (id: string) => `enc-${id}`
+    );
+    await getGroups(req, res);
+    expect(getGroupsInDB).toHaveBeenCalledWith({ group_ids: [2, 1, 99] });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith([
+      {
+        id: 2,
+        name: 'Goa',
+        inviteId: 'enc-2',
+        currency: 'INR',
+        currency_decimals: 2,
+      },
+      {
+        id: 1,
+        name: 'Manali Trip',
+        inviteId: 'enc-1',
+        currency: 'INR',
+        currency_decimals: 2,
+      },
+    ]);
+  });
+
+  test('getGroups rejects a payload without a list of ids', async () => {
+    let req = { body: { group_ids: 5 } } as any as Request;
+    await getGroups(req, res);
+    expect(getGroupsInDB).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: `group_ids: ${ErrorMessage.NotAnIdList}`,
+    });
+  });
+
+  test('updateGroup renames the group and returns it', async () => {
+    let req = {
+      body: { group_id: '42', name: '  Manali 2026 ' },
+    } as any as Request;
+    (updateGroupInDB as Mock).mockResolvedValue({
+      group: {
+        id: 42,
+        name: 'Manali 2026',
+        currency: 'INR',
+        currency_decimals: 2,
+      },
+      previous: { name: 'Manali Trip', currency: 'INR', currency_decimals: 2 },
+    });
+    (crypto.encryptDeterministic as Mock).mockReturnValue('enc-42');
+    await updateGroup(req, res);
+    // Only the field sent is passed on, so currency is left as it is.
+    expect(updateGroupInDB).toHaveBeenCalledWith({
+      group_id: 42,
+      name: 'Manali 2026',
+    });
+    expect(crypto.encryptDeterministic).toHaveBeenCalledWith('42');
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith({
+      id: 42,
+      name: 'Manali 2026',
+      inviteId: 'enc-42',
+      currency: 'INR',
+      currency_decimals: 2,
+    });
+  });
+
+  test("updateGroup notifies the group's devices of a rename", async () => {
+    let req = { body: { group_id: 42, name: 'Manali 2026' } } as any as Request;
+    (updateGroupInDB as Mock).mockResolvedValue({
+      group: {
+        id: 42,
+        name: 'Manali 2026',
+        currency: 'INR',
+        currency_decimals: 2,
+      },
+      previous: { name: 'Manali Trip', currency: 'INR', currency_decimals: 2 },
+    });
+    await updateGroup(req, res);
+
+    expect(send_push_notification).toHaveBeenCalledTimes(1);
+    const call = (send_push_notification as Mock).mock.calls[0][0];
+    expect(call).toMatchObject({
+      group_id: 42,
+      title: '"Manali Trip" is now "Manali 2026"',
+    });
+    // The heading is used whole, not as '... in <group name>'.
+    expect(call.headings('Manali 2026')).toBe('Group Renamed');
+  });
+
+  test('updateGroup names every change in one notification', async () => {
+    let req = {
+      body: {
+        group_id: 42,
+        name: 'Manali 2026',
+        currency: 'INR',
+        currency_decimals: 2,
+      },
+    } as any as Request;
+    (updateGroupInDB as Mock).mockResolvedValue({
+      group: {
+        id: 42,
+        name: 'Manali 2026',
+        currency: 'USD',
+        currency_decimals: 2,
+      },
+      previous: { name: 'Manali Trip', currency: 'INR', currency_decimals: 2 },
+    });
+    await updateGroup(req, res);
+
+    const call = (send_push_notification as Mock).mock.calls[0][0];
+    expect(call.title).toBe(
+      '"Manali Trip" is now "Manali 2026". Currency is now USD'
+    );
+    expect(call.headings('Manali 2026')).toBe('Group Updated');
+  });
+
+  test("updateGroup rejects decimals that are not the currency's", async () => {
+    let req = {
+      body: { group_id: 42, currency: 'INR', currency_decimals: 0 },
+    } as any as Request;
+    await updateGroup(req, res);
+    expect(updateGroupInDB).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: `currency_decimals: ${ErrorMessage.DecimalsMismatch} (2 for INR)`,
+    });
+  });
+
+  test('updateGroup reports a change of decimals as a currency change', async () => {
+    let req = {
+      body: { group_id: 42, currency: 'INR', currency_decimals: 2 },
+    } as any as Request;
+    // The group had been stored with another scale; the query says what changed.
+    (updateGroupInDB as Mock).mockResolvedValue({
+      group: { id: 42, name: 'Goa', currency: 'INR', currency_decimals: 2 },
+      previous: { name: 'Goa', currency: 'INR', currency_decimals: 0 },
+    });
+    await updateGroup(req, res);
+    const call = (send_push_notification as Mock).mock.calls[0][0];
+    expect(call.title).toBe('Currency is now INR');
+  });
+
+  test('updateGroup sends no notification when nothing changed', async () => {
+    let req = { body: { group_id: 42, name: 'Manali Trip' } } as any as Request;
+    (updateGroupInDB as Mock).mockResolvedValue({
+      group: {
+        id: 42,
+        name: 'Manali Trip',
+        currency: 'INR',
+        currency_decimals: 2,
+      },
+      previous: { name: 'Manali Trip', currency: 'INR', currency_decimals: 2 },
+    });
+    await updateGroup(req, res);
+    expect(send_push_notification).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  test('updateGroup reports a currency change the group can no longer make', async () => {
+    let req = {
+      body: { group_id: 42, currency: 'INR', currency_decimals: 2 },
+    } as any as Request;
+    (updateGroupInDB as Mock).mockRejectedValue(
+      new Error(ErrorMessage.CurrencyLocked)
+    );
+    await updateGroup(req, res);
+    expect(send_push_notification).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: ErrorMessage.CurrencyLocked,
+    });
+  });
+
+  test('updateGroup reports an unknown group', async () => {
+    let req = {
+      body: { group_id: 404, currency: 'inr', currency_decimals: 2 },
+    } as any as Request;
+    (updateGroupInDB as Mock).mockResolvedValue(undefined);
+    await updateGroup(req, res);
+    expect(updateGroupInDB).toHaveBeenCalledWith({
+      group_id: 404,
+      currency: 'INR',
+      currency_decimals: 2,
+    });
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: ErrorMessage.GroupNotFound,
+    });
+  });
+
+  test('updateGroup rejects a request that changes nothing', async () => {
+    let req = { body: { group_id: 42 } } as any as Request;
+    await updateGroup(req, res);
+    expect(updateGroupInDB).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: ErrorMessage.NothingToUpdate,
+    });
   });
 
   test('registerDevice rejects an invalid payload', async () => {
