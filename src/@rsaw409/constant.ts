@@ -12,6 +12,9 @@ const ErrorMessage = {
   NotAList: 'must be a list of names',
   CurrencyUnsupported: 'only INR is supported for now',
   MemberRepeated: 'must not repeat a name',
+  NotASubscriptionId: 'must be a OneSignal subscription id (a UUID)',
+  NotAnIdList: 'must be a list of group ids',
+  TooManyGroups: 'must list at most 500 groups',
 };
 
 export { ErrorMessage };

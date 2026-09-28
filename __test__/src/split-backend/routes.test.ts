@@ -13,12 +13,12 @@ vi.mock('../../../src/split-backend/controller.js', () => {
     getAllTransactionInGroup: vi.fn(),
     getOverviewDataInGroup: vi.fn(),
     savePayments: vi.fn(),
+    registerDevice: vi.fn(),
   };
 });
 
-const { getAllUsersInGroup } = await import(
-  '../../../src/split-backend/controller.js'
-);
+const { getAllUsersInGroup, registerDevice } =
+  await import('../../../src/split-backend/controller.js');
 
 const { addRoutes } = await import('../../../src/split-backend/routes.js');
 
@@ -28,13 +28,28 @@ describe('TEST routes', () => {
   });
 
   test('test express routes - getAllUsers', async () => {
-    (getAllUsersInGroup as Mock).mockImplementation(async (_req: Request, res: Response) => {
-      return res.status(200).send([]);
-    });
+    (getAllUsersInGroup as Mock).mockImplementation(
+      async (_req: Request, res: Response) => {
+        return res.status(200).send([]);
+      }
+    );
     const app = express();
     addRoutes(app);
     const response = await request(app).post('/getAllUsersInGroup');
     expect(getAllUsersInGroup).toHaveBeenCalled();
+    expect(response.status).toBe(200);
+  });
+
+  test('test express routes - registerDevice', async () => {
+    (registerDevice as Mock).mockImplementation(
+      async (_req: Request, res: Response) => {
+        return res.status(200).send({});
+      }
+    );
+    const app = express();
+    addRoutes(app);
+    const response = await request(app).post('/registerDevice');
+    expect(registerDevice).toHaveBeenCalled();
     expect(response.status).toBe(200);
   });
 

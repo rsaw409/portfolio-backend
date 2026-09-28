@@ -88,11 +88,10 @@ const expense = {
   by: 1,
   title: 'dinner',
   totalAmount: 10000,
-  groupName: 'trip',
   transactionParts: [{ user_id: 2, amount: 10000 }],
 };
 
-const payment = { from: 1, to: 2, amount: 5000, groupName: 'trip' };
+const payment = { from: 1, to: 2, amount: 5000 };
 
 const keyed = <T>(payload: T, idempotency_key: string) => {
   return { ...payload, idempotency_key };

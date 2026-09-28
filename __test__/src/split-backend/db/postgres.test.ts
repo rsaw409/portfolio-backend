@@ -49,22 +49,25 @@ vi.mock('../../../../src/split-backend/db/models/transactionPart.js', () => {
   };
 });
 
-const { default: initializeSplitDB } = await import(
-  '../../../../src/split-backend/db/postgres.js'
-);
+vi.mock('../../../../src/split-backend/db/models/deviceGroup.js', () => {
+  return {
+    default: vi.fn(),
+  };
+});
+
+const { default: initializeSplitDB } =
+  await import('../../../../src/split-backend/db/postgres.js');
 const { Sequelize } = await import('sequelize');
-const { default: createGroupModel } = await import(
-  '../../../../src/split-backend/db/models/group.js'
-);
-const { default: createUserModel } = await import(
-  '../../../../src/split-backend/db/models/user.js'
-);
-const { default: createTransactionModel } = await import(
-  '../../../../src/split-backend/db/models/transaction.js'
-);
-const { default: createTransactionPartModel } = await import(
-  '../../../../src/split-backend/db/models/transactionPart.js'
-);
+const { default: createGroupModel } =
+  await import('../../../../src/split-backend/db/models/group.js');
+const { default: createUserModel } =
+  await import('../../../../src/split-backend/db/models/user.js');
+const { default: createTransactionModel } =
+  await import('../../../../src/split-backend/db/models/transaction.js');
+const { default: createTransactionPartModel } =
+  await import('../../../../src/split-backend/db/models/transactionPart.js');
+const { default: createDeviceGroupModel } =
+  await import('../../../../src/split-backend/db/models/deviceGroup.js');
 
 describe('TEST SplitDB initialization', () => {
   beforeEach(() => {
@@ -79,6 +82,7 @@ describe('TEST SplitDB initialization', () => {
     expect(createUserModel).toHaveBeenCalledWith(ss, schemaName);
     expect(createTransactionModel).toHaveBeenCalledWith(ss, schemaName);
     expect(createTransactionPartModel).toHaveBeenCalledWith(ss, schemaName);
+    expect(createDeviceGroupModel).toHaveBeenCalledWith(ss, schemaName);
   });
 
   test('Should log error in initializeSplitDB', async () => {

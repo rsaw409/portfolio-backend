@@ -46,7 +46,8 @@ const nonBlankText = z
       issue.input === undefined ? ErrorMessage.Required : ErrorMessage.NotText,
   })
   .trim()
-  .min(1, ErrorMessage.Blank);
+  // abort: a blank value gets this message alone, not every later check's.
+  .min(1, { error: ErrorMessage.Blank, abort: true });
 
 /**
  * Only INR for now: amounts are paise and notifications print 'INR', so any
@@ -100,7 +101,6 @@ const saveTransactionSchema = z
     by: requiredId,
     title: z.string().min(1),
     totalAmount: paise,
-    groupName: z.string().optional(),
     idempotency_key: idempotencyKey,
     transactionParts: z.array(transactionPartSchema).min(1),
   })
@@ -112,11 +112,12 @@ const saveTransactionSchema = z
     { message: 'distribution is not matching with totalAmount.' }
   );
 
+// The app still sends groupName on writes. It is no longer read — the
+// notification text takes the name from the database — and zod strips it.
 const savePaymentSchema = z.object({
   from: requiredId,
   to: requiredId,
   amount: paise,
-  groupName: z.string().optional(),
   idempotency_key: idempotencyKey,
 });
 
@@ -146,6 +147,30 @@ const savePaymentsSchema = z
       });
     }
   });
+
+const MAX_GROUPS_PER_DEVICE = 500;
+
+// OneSignal subscription ids are UUIDs, and OneSignal rejects a whole
+// notification if any id in it is not one.
+const SUBSCRIPTION_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const isSubscriptionId = (value: string) => SUBSCRIPTION_ID.test(value);
+
+/**
+ * The complete list of groups a device follows. Repeats are dropped rather
+ * than rejected: they ask for the same thing twice.
+ */
+const registerDeviceSchema = z.object({
+  subscription_id: nonBlankText
+    .regex(SUBSCRIPTION_ID, ErrorMessage.NotASubscriptionId)
+    // One spelling per device, so it maps to one primary-key row.
+    .transform((id) => id.toLowerCase()),
+  group_ids: z
+    .array(requiredId, { error: ErrorMessage.NotAnIdList })
+    .max(MAX_GROUPS_PER_DEVICE, ErrorMessage.TooManyGroups)
+    .transform((ids) => [...new Set(ids)]),
+});
 
 const getAllTransactionInGroupSchema = z.object({
   group_id: requiredId,
@@ -182,5 +207,8 @@ export {
   savePaymentSchema,
   savePaymentsSchema,
   getAllTransactionInGroupSchema,
+  registerDeviceSchema,
+  isSubscriptionId,
   MAX_KEY_LENGTH,
+  MAX_GROUPS_PER_DEVICE,
 };

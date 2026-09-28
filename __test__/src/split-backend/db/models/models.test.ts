@@ -16,6 +16,7 @@ vi.mock('sequelize', () => {
     }),
     DataTypes: {
       INTEGER: 'INTEGER',
+      TEXT: 'TEXT',
       // Callable, like the real one, for sized columns such as STRING(3).
       STRING: Object.assign(() => 'STRING', { toString: () => 'STRING' }),
       ARRAY: () => {},
@@ -32,6 +33,8 @@ const { default: createTransactionModel } =
   await import('../../../../../src/split-backend/db/models/transaction.js');
 const { default: createTransactionPartModel } =
   await import('../../../../../src/split-backend/db/models/transactionPart.js');
+const { default: createDeviceGroupModel } =
+  await import('../../../../../src/split-backend/db/models/deviceGroup.js');
 
 describe('TEST models init', () => {
   test('tests portfolio db models init', () => {
@@ -41,6 +44,25 @@ describe('TEST models init', () => {
     createUserModel(ss, schemaName);
     createTransactionModel(ss, schemaName);
     createTransactionPartModel(ss, schemaName);
-    expect(ss.define).toHaveBeenCalledTimes(4);
+    createDeviceGroupModel(ss, schemaName);
+    expect(ss.define).toHaveBeenCalledTimes(5);
+  });
+
+  test('device_groups is keyed on (subscription_id, group_id)', () => {
+    const ss = new Sequelize('tests-postgres');
+    createDeviceGroupModel(ss, 'tests-schemaname');
+    const [name, attributes, options] = (ss.define as any).mock.calls[0];
+    expect(name).toBe('DeviceGroup');
+    expect(attributes.subscription_id.primaryKey).toBe(true);
+    expect(attributes.group_id.primaryKey).toBe(true);
+    expect(attributes.group_id.references).toEqual({
+      model: 'groups',
+      key: 'id',
+    });
+    expect(options).toMatchObject({
+      tableName: 'device_groups',
+      createdAt: false,
+      indexes: [{ name: 'device_groups_group_id', fields: ['group_id'] }],
+    });
   });
 });

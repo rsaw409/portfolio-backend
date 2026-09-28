@@ -34,6 +34,12 @@ vi.mock('../../../src/split-backend/db/queries/transaction.js', () => {
   };
 });
 
+vi.mock('../../../src/split-backend/db/queries/device.js', () => {
+  return {
+    registerDevice: vi.fn(),
+  };
+});
+
 vi.mock('../../../src/@rsaw409/crypto.js', () => {
   return {
     default: {
@@ -67,6 +73,9 @@ const {
   saveTransaction: saveTransactionInDB,
 } = await import('../../../src/split-backend/db/queries/transaction.js');
 
+const { registerDevice: registerDeviceInDB } =
+  await import('../../../src/split-backend/db/queries/device.js');
+
 const { default: crypto } = await import('../../../src/@rsaw409/crypto.js');
 const { ErrorMessage } = await import('../../../src/@rsaw409/constant.js');
 const { send_push_notification } =
@@ -82,6 +91,7 @@ const {
   savePayment,
   savePayments,
   saveTransaction,
+  registerDevice,
 } = await import('../../../src/split-backend/controller.js');
 
 /** A stand-in for a Sequelize model instance. */
@@ -365,9 +375,11 @@ describe('Testing Controllers', () => {
       to: 1,
       amount: 10000,
     });
-    expect(send_push_notification).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'INR 100.00' })
-    );
+    expect(send_push_notification).toHaveBeenCalledWith({
+      user_id: 1,
+      headings: 'New Payment',
+      title: 'INR 100.00',
+    });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalledWith({ id: 1 });
   });
@@ -478,7 +490,7 @@ describe('Testing Controllers', () => {
     await savePayments(req, res);
     expect(send_push_notification).toHaveBeenCalledTimes(1);
     expect(send_push_notification).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'INR 50.00' })
+      expect.objectContaining({ user_id: 2, title: 'INR 50.00' })
     );
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }]);
@@ -582,9 +594,69 @@ describe('Testing Controllers', () => {
         { user_id: 2, amount: 8000 },
       ],
     });
-    expect(send_push_notification).toHaveBeenCalled();
+    expect(send_push_notification).toHaveBeenCalledWith({
+      user_id: 1,
+      headings: 'New Expense',
+      title: 'test',
+    });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalledWith({ id: 1 });
+  });
+
+  test('saveTransaction ignores groupName from the request', async () => {
+    let req = {
+      body: {
+        by: 1,
+        title: 'test',
+        totalAmount: 100,
+        groupName: 'stale name',
+        transactionParts: [{ user_id: 1, amount: 100 }],
+      },
+    } as any as Request;
+    (saveTransactionInDB as Mock).mockResolvedValue({
+      result: { id: 1 },
+      replayed: false,
+    });
+    await saveTransaction(req, res);
+    expect(saveTransactionInDB).toHaveBeenCalledWith(
+      expect.not.objectContaining({ groupName: expect.anything() })
+    );
+    expect(send_push_notification).toHaveBeenCalledWith(
+      expect.not.objectContaining({ groupName: expect.anything() })
+    );
+  });
+
+  test('registerDevice rejects an invalid payload', async () => {
+    let req = {
+      body: { subscription_id: ' ', group_ids: 'x' },
+    } as any as Request;
+    await registerDevice(req, res);
+    expect(registerDeviceInDB).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message:
+        'subscription_id: must not be blank; group_ids: must be a list of group ids',
+    });
+  });
+
+  test('registerDevice returns the groups it registered', async () => {
+    let req = {
+      body: {
+        subscription_id: 'a1a3588d-8d75-4d23-879f-82aa4a2c23c7',
+        group_ids: [1, '2', 3, 1],
+      },
+    } as any as Request;
+    (registerDeviceInDB as Mock).mockResolvedValue([1, 2]);
+    await registerDevice(req, res);
+    expect(registerDeviceInDB).toHaveBeenCalledWith({
+      subscription_id: 'a1a3588d-8d75-4d23-879f-82aa4a2c23c7',
+      group_ids: [1, 2, 3],
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith({
+      subscription_id: 'a1a3588d-8d75-4d23-879f-82aa4a2c23c7',
+      group_ids: [1, 2],
+    });
   });
 
   test('saveTransaction replay returns the original response and no notification', async () => {

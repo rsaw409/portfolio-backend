@@ -74,7 +74,6 @@ describe('TEST split-backend queries', () => {
         by: 1,
         title: 'ttile',
         totalAmount: 11200,
-        groupName: 'groupName',
         transactionParts: [],
       })
     ).rejects.toThrow('DB not initialized');
@@ -86,7 +85,6 @@ describe('TEST split-backend queries', () => {
         from: 1,
         to: 2,
         amount: 11200,
-        groupName: 'groupName',
       })
     ).rejects.toThrow('DB not initialized');
   });
@@ -98,7 +96,6 @@ describe('TEST split-backend queries', () => {
           from: 1,
           to: 2,
           amount: 11200,
-          groupName: 'groupName',
         },
       ])
     ).rejects.toThrow('DB not initialized');

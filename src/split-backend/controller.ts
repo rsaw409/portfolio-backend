@@ -15,6 +15,7 @@ import {
   createUser as createUserInDB,
   getAllUsersInGroup as getAllUsersInGroupFromDB,
 } from './db/queries/user.js';
+import { registerDevice as registerDeviceInDB } from './db/queries/device.js';
 import crypto from '../@rsaw409/crypto.js';
 import { send_push_notification } from './utils/send_notification.js';
 import {
@@ -27,12 +28,14 @@ import {
   savePaymentSchema,
   savePaymentsSchema,
   getAllTransactionInGroupSchema,
+  registerDeviceSchema,
 } from './utils/validator.js';
 import {
   createGroupPayload,
   createUserPayload,
   getAllTransactionInGroupPayload,
   joinGroupPayload,
+  registerDevicePayload,
   savePaymentPayload,
   saveTransactionPayload,
 } from '../types/split.js';
@@ -126,7 +129,7 @@ const saveTransaction = async (
     // that does not exist.
     if (!replayed) {
       send_push_notification({
-        groupName: payload.groupName,
+        user_id: payload.by,
         headings: 'New Expense',
         title: payload.title,
       });
@@ -151,7 +154,7 @@ const savePayment = async (
     const { result, replayed } = await savePaymentInDB(payload);
     if (!replayed) {
       send_push_notification({
-        groupName: payload.groupName,
+        user_id: payload.from,
         headings: 'New Payment',
         title: `INR ${formatRupees(payload.amount)}`,
       });
@@ -180,7 +183,7 @@ const savePayments = async (
     payments.forEach((e, index) => {
       if (written[index]) {
         send_push_notification({
-          groupName: e.groupName,
+          user_id: e.from,
           headings: 'New Payment',
           title: `INR ${formatRupees(e.amount)}`,
         });
@@ -254,7 +257,29 @@ const getOverviewDataInGroup = async (
   }
 };
 
+const registerDevice = async (
+  req: Request<{}, {}, registerDevicePayload>,
+  res: Response
+) => {
+  try {
+    const { subscription_id, group_ids } = parse(
+      registerDeviceSchema,
+      req.body
+    );
+    const registered = await registerDeviceInDB({ subscription_id, group_ids });
+    return res.status(200).send({ subscription_id, group_ids: registered });
+  } catch (error: unknown) {
+    logger.error(error);
+    let message = ErrorMessage.Unknown;
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    res.status(400).send({ message: message });
+  }
+};
+
 export {
+  registerDevice,
   joinGroup,
   createGroup,
   createUser,

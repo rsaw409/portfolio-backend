@@ -129,7 +129,6 @@ describe('TEST split-backend queries', () => {
       by: 1,
       title: 'titile',
       totalAmount: 11200,
-      groupName: 'groupName',
       transactionParts: [],
     });
   });
@@ -139,7 +138,6 @@ describe('TEST split-backend queries', () => {
       from: 1,
       to: 2,
       amount: 11200,
-      groupName: 'groupName',
     });
   });
 
@@ -149,7 +147,6 @@ describe('TEST split-backend queries', () => {
         from: 1,
         to: 2,
         amount: 11200,
-        groupName: 'groupName',
       },
     ]);
   });

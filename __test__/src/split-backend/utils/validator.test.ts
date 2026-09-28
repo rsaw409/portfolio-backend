@@ -9,7 +9,9 @@ const {
   savePaymentSchema,
   savePaymentsSchema,
   getAllTransactionInGroupSchema,
+  registerDeviceSchema,
   MAX_KEY_LENGTH,
+  MAX_GROUPS_PER_DEVICE,
 } = await import('../../../../src/split-backend/utils/validator.js');
 const { ErrorMessage } = await import('../../../../src/@rsaw409/constant.js');
 
@@ -214,6 +216,71 @@ describe('TEST createGroup payload', () => {
     expect(
       parse(createGroupSchema, { name: 'a', idempotency_key: ' ' })
     ).not.toHaveProperty('idempotency_key', expect.anything());
+  });
+});
+
+describe('TEST registerDevice payload', () => {
+  const subscription_id = 'a1a3588d-8d75-4d23-879f-82aa4a2c23c7';
+
+  test('coerces ids and drops repeats', () => {
+    expect(
+      parse(registerDeviceSchema, {
+        subscription_id: ` ${subscription_id} `,
+        group_ids: [1, '2', 1],
+      })
+    ).toEqual({ subscription_id, group_ids: [1, 2] });
+  });
+
+  test('accepts an empty list, which unregisters the device', () => {
+    expect(
+      parse(registerDeviceSchema, { subscription_id, group_ids: [] })
+    ).toEqual({ subscription_id, group_ids: [] });
+  });
+
+  test('rejects a missing, blank or non-UUID subscription_id', () => {
+    expect(() => parse(registerDeviceSchema, { group_ids: [] })).toThrow(
+      'subscription_id: is required'
+    );
+    expect(() =>
+      parse(registerDeviceSchema, { subscription_id: '  ', group_ids: [] })
+    ).toThrow(/^subscription_id: must not be blank$/);
+    for (const bad of [
+      'zz-verify-sub',
+      `${subscription_id}0`,
+      'x'.repeat(36),
+    ]) {
+      expect(() =>
+        parse(registerDeviceSchema, { subscription_id: bad, group_ids: [] })
+      ).toThrow(`subscription_id: ${ErrorMessage.NotASubscriptionId}`);
+    }
+  });
+
+  test('lower-cases the subscription_id so a device has one row', () => {
+    expect(
+      parse(registerDeviceSchema, {
+        subscription_id: subscription_id.toUpperCase(),
+        group_ids: [1],
+      })
+    ).toEqual({ subscription_id, group_ids: [1] });
+  });
+
+  test('rejects group_ids that are not a list of ids', () => {
+    expect(() => parse(registerDeviceSchema, { subscription_id })).toThrow(
+      `group_ids: ${ErrorMessage.NotAnIdList}`
+    );
+    expect(() =>
+      parse(registerDeviceSchema, { subscription_id, group_ids: ['abc'] })
+    ).toThrow(/group_ids\.0/);
+  });
+
+  test('caps how many groups one device can list', () => {
+    const group_ids = Array.from(
+      { length: MAX_GROUPS_PER_DEVICE + 1 },
+      (_, i) => i + 1
+    );
+    expect(() =>
+      parse(registerDeviceSchema, { subscription_id, group_ids })
+    ).toThrow(`group_ids: ${ErrorMessage.TooManyGroups}`);
   });
 });
 

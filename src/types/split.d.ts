@@ -17,7 +17,6 @@ interface createUserPayload {
 }
 
 interface saveTransactionPayload {
-  groupName?: string;
   // All amounts are whole paise.
   totalAmount: number;
   title: string;
@@ -27,7 +26,6 @@ interface saveTransactionPayload {
 }
 
 interface savePaymentPayload {
-  groupName?: string;
   // In paise.
   amount: number;
   from: number;
@@ -41,6 +39,13 @@ interface getAllTransactionInGroupPayload {
   user_id?: number;
   // true: payments only, false: expenses only, undefined: no filter.
   payments?: boolean;
+}
+
+interface registerDevicePayload {
+  // OneSignal subscription id: one per app install.
+  subscription_id: string;
+  // Every group the device follows; groups left out are unregistered.
+  group_ids: number[];
 }
 
 interface User {
@@ -69,6 +74,7 @@ export {
   saveTransactionPayload,
   savePaymentPayload,
   getAllTransactionInGroupPayload,
+  registerDevicePayload,
   User,
   IdempotentResult,
   IdempotentBatchResult,
