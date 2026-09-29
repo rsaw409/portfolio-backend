@@ -15,6 +15,8 @@ const {
   MAX_KEY_LENGTH,
   MAX_GROUP_IDS,
   MAX_AVATAR_LENGTH,
+  MAX_ICON_BYTES,
+  MAX_ICON_COLOR_LENGTH,
 } = await import('../../../../src/split-backend/utils/validator.js');
 const { ErrorMessage } = await import('../../../../src/@rsaw409/constant.js');
 
@@ -488,6 +490,76 @@ describe('TEST updateGroup payload', () => {
     expect(() => parse(updateGroupSchema, { group_id: 7 })).toThrow(
       ErrorMessage.NothingToUpdate
     );
+  });
+});
+
+describe('TEST group icon', () => {
+  const create = (extra: Record<string, unknown>) =>
+    parse(createGroupSchema, { name: 'a', currency_decimals: 2, ...extra });
+  const update = (extra: Record<string, unknown>) =>
+    parse(updateGroupSchema, { group_id: 7, ...extra });
+
+  test('accepts an icon with its colour, trimmed, and none at all', () => {
+    expect(create({ icon: ' 🏖️ ', icon_color: ' orange ' })).toMatchObject({
+      icon: '🏖️',
+      icon_color: 'orange',
+    });
+    expect(create({})).not.toHaveProperty('icon');
+    expect(update({ icon: '👨‍👩‍👧', icon_color: 'teal' })).toEqual({
+      group_id: 7,
+      icon: '👨‍👩‍👧',
+      icon_color: 'teal',
+    });
+  });
+
+  test('requires icon and icon_color together', () => {
+    for (const parseWith of [create, update]) {
+      expect(() => parseWith({ icon: '🏖️' })).toThrow(
+        'icon_color: is required'
+      );
+      expect(() => parseWith({ icon_color: 'orange' })).toThrow(
+        'icon: is required'
+      );
+    }
+  });
+
+  test('rejects blank values', () => {
+    for (const parseWith of [create, update]) {
+      expect(() => parseWith({ icon: ' ', icon_color: 'orange' })).toThrow(
+        'icon: must not be blank'
+      );
+      expect(() => parseWith({ icon: '🏖️', icon_color: '' })).toThrow(
+        'icon_color: must not be blank'
+      );
+    }
+  });
+
+  test('caps icon in bytes and icon_color in characters', () => {
+    // 18 bytes but 5 code points: fine.
+    expect(create({ icon: '👨‍👩‍👧', icon_color: 'a' })).toHaveProperty(
+      'icon',
+      '👨‍👩‍👧'
+    );
+    expect(
+      create({ icon: 'x'.repeat(MAX_ICON_BYTES), icon_color: 'a' })
+    ).toHaveProperty('icon');
+    // 9 emoji of 4 bytes each: 36 bytes.
+    expect(() => create({ icon: '😀'.repeat(9), icon_color: 'a' })).toThrow(
+      `icon: ${ErrorMessage.IconTooLong}`
+    );
+    expect(() =>
+      update({
+        icon: '🏖️',
+        icon_color: 'x'.repeat(MAX_ICON_COLOR_LENGTH + 1),
+      })
+    ).toThrow(`icon_color: ${ErrorMessage.IconColorTooLong}`);
+  });
+
+  test('does not restrict which emoji or colours are used', () => {
+    expect(create({ icon: 'Z', icon_color: '#ff00aa' })).toMatchObject({
+      icon: 'Z',
+      icon_color: '#ff00aa',
+    });
   });
 });
 

@@ -85,6 +85,8 @@ const trip = {
   name: 'Manali Trip',
   currency: 'INR',
   currency_decimals: 2,
+  icon: '🏔️',
+  icon_color: 'blue',
   members: [
     { name: 'Rohit', avatar: 'seed-r' },
     { name: 'Priya' },
@@ -108,6 +110,8 @@ describe('TEST idempotent createGroup', () => {
     expect(replayed).toBe(false);
     expect(result.group.get('currency')).toBe('INR');
     expect(names(result.members)).toEqual(['Rohit', 'Priya', 'Aman']);
+    expect(result.group.get('icon')).toBe('🏔️');
+    expect(result.group.get('icon_color')).toBe('blue');
     expect(result.members.map((m) => m.get('avatar'))).toEqual([
       'seed-r',
       undefined,
@@ -132,6 +136,7 @@ describe('TEST idempotent createGroup', () => {
 
     expect(second.replayed).toBe(true);
     expect(second.result.group.get('id')).toBe(first.result.group.get('id'));
+    expect(second.result.group.get('icon')).toBe('🏔️');
     expect(names(second.result.members)).toEqual(['Rohit', 'Priya', 'Aman']);
     expect(groups).toHaveLength(1);
     expect(users).toHaveLength(3);

@@ -23,6 +23,16 @@ const createGroupModel = (sequelize: Sequelize, schema: string) => {
         allowNull: false,
         defaultValue: 2,
       },
+      // Emoji and colour name the app draws the group's icon with. The app owns
+      // the list of both; NULL for groups made before icons.
+      icon: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      icon_color: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       // Same contract as transactions.idempotency_key: the unique index stops
       // a retried createGroup making a second group, and NULLs never collide.
       idempotency_key: {

@@ -1,10 +1,25 @@
 import { vi, describe, test, expect, beforeEach } from 'vitest';
 import { DatabaseError } from 'sequelize';
 
+const noIcon = { icon: null, icon_color: null };
+
 const stored = [
-  { id: 1, name: 'Manali Trip', currency: 'INR', currency_decimals: 2 },
-  { id: 2, name: 'Goa', currency: 'INR', currency_decimals: 2 },
-  { id: 3, name: 'Flat', currency: 'INR', currency_decimals: 2 },
+  {
+    id: 1,
+    name: 'Manali Trip',
+    currency: 'INR',
+    currency_decimals: 2,
+    ...noIcon,
+  },
+  { id: 2, name: 'Goa', currency: 'INR', currency_decimals: 2, ...noIcon },
+  {
+    id: 3,
+    name: 'Flat',
+    currency: 'INR',
+    currency_decimals: 2,
+    icon: '🏠',
+    icon_color: 'teal',
+  },
 ];
 
 const Group = {
@@ -32,6 +47,8 @@ const query = vi.fn(async (sql: string, { bind }: any = {}) => {
             name: row.name,
             currency: row.currency,
             currency_decimals: row.currency_decimals,
+            icon: row.icon,
+            icon_color: row.icon_color,
           },
         ]
       : [];
@@ -43,6 +60,8 @@ const query = vi.fn(async (sql: string, { bind }: any = {}) => {
       name: bind.name ?? row!.name,
       currency: bind.currency ?? row!.currency,
       currency_decimals: bind.currency_decimals ?? row!.currency_decimals,
+      icon: bind.icon ?? row!.icon,
+      icon_color: bind.icon_color ?? row!.icon_color,
     },
   ];
 });
@@ -77,8 +96,21 @@ describe('TEST getGroups', () => {
 
   test('returns known groups in request order, leaving out unknown ids', async () => {
     expect(await getGroups({ group_ids: [3, 99, 1] })).toEqual([
-      { id: 3, name: 'Flat', currency: 'INR', currency_decimals: 2 },
-      { id: 1, name: 'Manali Trip', currency: 'INR', currency_decimals: 2 },
+      {
+        id: 3,
+        name: 'Flat',
+        currency: 'INR',
+        currency_decimals: 2,
+        icon: '🏠',
+        icon_color: 'teal',
+      },
+      {
+        id: 1,
+        name: 'Manali Trip',
+        currency: 'INR',
+        currency_decimals: 2,
+        ...noIcon,
+      },
     ]);
   });
 
@@ -86,7 +118,14 @@ describe('TEST getGroups', () => {
     await getGroups({ group_ids: [1] });
     expect(Group.findAll).toHaveBeenCalledWith(
       expect.objectContaining({
-        attributes: ['id', 'name', 'currency', 'currency_decimals'],
+        attributes: [
+          'id',
+          'name',
+          'currency',
+          'currency_decimals',
+          'icon',
+          'icon_color',
+        ],
       })
     );
   });
@@ -108,9 +147,37 @@ describe('TEST updateGroup', () => {
 
   test('returns the group as it now is and its previous values', async () => {
     expect(await updateGroup({ group_id: 2, name: 'Goa 2026' })).toEqual({
-      group: { id: 2, name: 'Goa 2026', currency: 'INR', currency_decimals: 2 },
-      previous: { name: 'Goa', currency: 'INR', currency_decimals: 2 },
+      group: {
+        id: 2,
+        name: 'Goa 2026',
+        currency: 'INR',
+        currency_decimals: 2,
+        ...noIcon,
+      },
+      previous: {
+        name: 'Goa',
+        currency: 'INR',
+        currency_decimals: 2,
+        ...noIcon,
+      },
     });
+  });
+
+  test('changes the icon without the currency lock', async () => {
+    used.add(2);
+    expect(
+      await updateGroup({ group_id: 2, icon: '🏖️', icon_color: 'orange' })
+    ).toMatchObject({
+      group: { name: 'Goa', icon: '🏖️', icon_color: 'orange' },
+      previous: { icon: null, icon_color: null },
+    });
+    expect(sqlOf().some((sql) => /^(lock table|set local)/.test(sql))).toBe(
+      false
+    );
+    const [sql, options] = query.mock.calls.at(-1)!;
+    expect(options.bind).toMatchObject({ icon: '🏖️', icon_color: 'orange' });
+    expect(sql).toContain('coalesce($icon::text, icon)');
+    expect(sql).toContain('coalesce($icon_color::text, icon_color)');
   });
 
   test('locks the group first, all in one transaction', async () => {
@@ -129,6 +196,8 @@ describe('TEST updateGroup', () => {
       name: 'Goa 2026',
       currency: null,
       currency_decimals: null,
+      icon: null,
+      icon_color: null,
     });
     expect(sql).toContain('coalesce($currency::text, currency)');
     expect(sql).not.toContain('Goa 2026');

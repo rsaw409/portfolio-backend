@@ -13,6 +13,9 @@ interface createGroupPayload {
   // The users to create in the group along with it. Plain names are what app
   // versions from before avatars send; the validator turns them into objects.
   members?: Array<string | GroupMember>;
+  // The group icon's emoji and colour; sent together or not at all.
+  icon?: string;
+  icon_color?: string;
   idempotency_key?: string;
 }
 
@@ -74,6 +77,9 @@ interface updateGroupPayload {
   // currency_decimals is sent exactly when currency is.
   currency?: string;
   currency_decimals?: number;
+  // Sent together or not at all.
+  icon?: string;
+  icon_color?: string;
 }
 
 interface GroupSummary {
@@ -82,6 +88,9 @@ interface GroupSummary {
   currency: string;
   // Decimals of the currency's minor unit: the scale of the group's amounts.
   currency_decimals: number;
+  // NULL for groups created without an icon.
+  icon: string | null;
+  icon_color: string | null;
 }
 
 interface User {

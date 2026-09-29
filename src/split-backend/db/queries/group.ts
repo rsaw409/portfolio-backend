@@ -61,6 +61,8 @@ const createGroup = async (
           name: payload.name,
           currency: payload.currency,
           currency_decimals: payload.currency_decimals,
+          icon: payload.icon,
+          icon_color: payload.icon_color,
           idempotency_key: idempotencyKey,
         },
         { transaction: t }
@@ -101,8 +103,8 @@ const getGroup = async ({ group_id }: { group_id: number }) => {
 };
 
 /**
- * The current id, name, currency and currency_decimals of each listed group that exists, in
- * request order. Unknown ids are left out rather than failing the rest.
+ * The current id, name, currency, currency_decimals, icon and icon_color of
+ * each listed group that exists, in request order. Unknown ids are left out rather than failing the rest.
  */
 const getGroups = async ({
   group_ids,
@@ -112,7 +114,14 @@ const getGroups = async ({
 
   const rows = (await sequelize.models.Group.findAll({
     where: { id: group_ids },
-    attributes: ['id', 'name', 'currency', 'currency_decimals'],
+    attributes: [
+      'id',
+      'name',
+      'currency',
+      'currency_decimals',
+      'icon',
+      'icon_color',
+    ],
     raw: true,
   })) as unknown as GroupSummary[];
 
@@ -133,7 +142,7 @@ const isLockTimeout = (error: unknown) =>
 interface UpdatedGroup {
   group: GroupSummary;
   // The values just before this update, so callers can tell what changed.
-  previous: { name: string; currency: string; currency_decimals: number };
+  previous: Omit<GroupSummary, 'id'>;
 }
 
 /**
@@ -161,16 +170,19 @@ const updateGroup = async ({
   name,
   currency,
   currency_decimals,
+  icon,
+  icon_color,
 }: updateGroupPayload): Promise<UpdatedGroup | undefined> => {
   if (!sequelize) throw new Error('DB not initialized');
 
   return sequelize.transaction(async (t) => {
     const [current] = (await sequelize.query(
-      `select name, currency, currency_decimals from ${schemaname}.groups
+      `select name, currency, currency_decimals, icon, icon_color
+from ${schemaname}.groups
 where id = $group_id
 for update`,
       { type: QueryTypes.SELECT, bind: { group_id }, transaction: t }
-    )) as Array<{ name: string; currency: string; currency_decimals: number }>;
+    )) as Array<Omit<GroupSummary, 'id'>>;
     if (!current) return undefined;
 
     // A new currency or a new scale both reinterpret stored amounts.
@@ -208,9 +220,11 @@ for update`,
 set name = coalesce($name::text, name),
     currency = coalesce($currency::text, currency),
     currency_decimals = coalesce($currency_decimals::smallint, currency_decimals),
+    icon = coalesce($icon::text, icon),
+    icon_color = coalesce($icon_color::text, icon_color),
     updated_at = now()
 where id = $group_id
-returning id, name, currency, currency_decimals`,
+returning id, name, currency, currency_decimals, icon, icon_color`,
       {
         type: QueryTypes.SELECT,
         // null, not undefined: an unset bind would be left in the SQL as-is.
@@ -219,6 +233,8 @@ returning id, name, currency, currency_decimals`,
           name: name ?? null,
           currency: currency ?? null,
           currency_decimals: currency_decimals ?? null,
+          icon: icon ?? null,
+          icon_color: icon_color ?? null,
         },
         transaction: t,
       }

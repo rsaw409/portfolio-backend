@@ -182,6 +182,8 @@ describe('Testing Controllers', () => {
         currency: 'inr',
         currency_decimals: 2,
         members: [{ name: 'Rohit', avatar: 'seed-r' }, ' Priya '],
+        icon: '🏔️',
+        icon_color: 'blue',
         idempotency_key: 'k1',
       },
     } as any as Request;
@@ -192,6 +194,8 @@ describe('Testing Controllers', () => {
           name: 'Manali Trip',
           currency: 'INR',
           currency_decimals: 2,
+          icon: '🏔️',
+          icon_color: 'blue',
         }),
         members: [
           row({ id: 101, name: 'Rohit', avatar: 'seed-r', group_id: 42 }),
@@ -207,6 +211,8 @@ describe('Testing Controllers', () => {
       currency: 'INR',
       currency_decimals: 2,
       members: [{ name: 'Rohit', avatar: 'seed-r' }, { name: 'Priya' }],
+      icon: '🏔️',
+      icon_color: 'blue',
       idempotency_key: 'k1',
     });
     expect(crypto.encryptDeterministic).toHaveBeenCalledWith('42');
@@ -218,6 +224,8 @@ describe('Testing Controllers', () => {
       inviteId: 'enc-42',
       currency: 'INR',
       currency_decimals: 2,
+      icon: '🏔️',
+      icon_color: 'blue',
       members: [
         { user_id: 101, name: 'Rohit', avatar: 'seed-r' },
         { user_id: 102, name: 'Priya', avatar: null },
@@ -695,6 +703,60 @@ describe('Testing Controllers', () => {
         currency_decimals: 2,
       },
     ]);
+  });
+
+  test('getGroups and updateGroup return the icon', async () => {
+    const group = {
+      id: 2,
+      name: 'Goa',
+      currency: 'INR',
+      currency_decimals: 2,
+      icon: '🏖️',
+      icon_color: 'orange',
+    };
+    (crypto.encryptDeterministic as Mock).mockReturnValue('enc-2');
+    (getGroupsInDB as Mock).mockResolvedValue([group]);
+    await getGroups({ body: { group_ids: [2] } } as any as Request, res);
+    expect(res.send).toHaveBeenLastCalledWith([
+      expect.objectContaining({ icon: '🏖️', icon_color: 'orange' }),
+    ]);
+
+    (updateGroupInDB as Mock).mockResolvedValue({
+      group,
+      previous: { ...group, icon: null, icon_color: null },
+    });
+    await updateGroup(
+      {
+        body: { group_id: 2, icon: '🏖️', icon_color: 'orange' },
+      } as any as Request,
+      res
+    );
+    expect(updateGroupInDB).toHaveBeenCalledWith({
+      group_id: 2,
+      icon: '🏖️',
+      icon_color: 'orange',
+    });
+    expect(res.status).toHaveBeenLastCalledWith(200);
+    expect(res.send).toHaveBeenLastCalledWith(
+      expect.objectContaining({ icon: '🏖️', icon_color: 'orange' })
+    );
+    // An icon change alone is picked up through getGroups, not pushed.
+    expect(send_push_notification).not.toHaveBeenCalled();
+  });
+
+  test('joinGroup returns the icon', async () => {
+    (crypto.decrypt as Mock).mockImplementation(() => 1);
+    (crypto.encryptDeterministic as Mock).mockReturnValue('enc-1');
+    (getGroupInDB as Mock).mockResolvedValue({
+      id: 1,
+      name: 'Goa',
+      icon: '🏖️',
+      icon_color: 'orange',
+    });
+    await joinGroup({ body: { invite_id: '123' } } as any as Request, res);
+    expect(res.send).toHaveBeenCalledWith(
+      expect.objectContaining({ icon: '🏖️', icon_color: 'orange' })
+    );
   });
 
   test('getGroups rejects a payload without a list of ids', async () => {

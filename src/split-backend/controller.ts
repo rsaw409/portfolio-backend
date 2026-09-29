@@ -67,6 +67,8 @@ const createGroup = async (
       inviteId: crypto.encryptDeterministic(`${group.get('id')}`),
       currency: group.get('currency'),
       currency_decimals: group.get('currency_decimals'),
+      icon: group.get('icon') ?? null,
+      icon_color: group.get('icon_color') ?? null,
       members: members.map((member) => {
         return {
           user_id: member.get('id'),
@@ -119,6 +121,8 @@ const groupResponse = ({
   name,
   currency,
   currency_decimals,
+  icon,
+  icon_color,
 }: GroupSummary) => {
   return {
     id,
@@ -126,6 +130,8 @@ const groupResponse = ({
     inviteId: crypto.encryptDeterministic(`${id}`),
     currency,
     currency_decimals,
+    icon,
+    icon_color,
   };
 };
 
@@ -150,7 +156,11 @@ const getGroups = async (
   }
 };
 
-/** The push text for a group update, or undefined when nothing changed. */
+/**
+ * The push text for a group update, or undefined when neither the name nor
+ * the currency changed. An icon change alone is not pushed: apps pick it up
+ * through getGroups at their next launch.
+ */
 const groupUpdateNotification = ({ group, previous }: UpdatedGroup) => {
   const renamed = group.name !== previous.name;
   const currencyChanged =
@@ -169,9 +179,9 @@ const groupUpdateNotification = ({ group, previous }: UpdatedGroup) => {
 };
 
 /**
- * Renames a group or changes its currency, and tells the group's devices when
- * something actually changed. Their apps pick the new details up through
- * getGroups.
+ * Renames a group or changes its currency or icon, and tells the group's
+ * devices when the name or currency actually changed. Their apps pick the new
+ * details up through getGroups.
  */
 const updateGroup = async (
   req: Request<{}, {}, updateGroupPayload>,

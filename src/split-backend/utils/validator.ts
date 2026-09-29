@@ -66,6 +66,45 @@ const member = z.preprocess(
   z.object({ name: nonBlankText, avatar: avatar.optional() })
 );
 
+// Bytes, not characters: one emoji can be several code points joined
+// together (👨‍👩‍👧 is 18 bytes).
+const MAX_ICON_BYTES = 32;
+const MAX_ICON_COLOR_LENGTH = 20;
+
+/**
+ * The group icon's emoji and colour. Any value within the limits is accepted:
+ * the app owns the list of both, so it can grow without a backend deploy.
+ */
+const icon = nonBlankText.refine(
+  (value) => Buffer.byteLength(value, 'utf8') <= MAX_ICON_BYTES,
+  ErrorMessage.IconTooLong
+);
+const iconColor = nonBlankText.max(
+  MAX_ICON_COLOR_LENGTH,
+  ErrorMessage.IconColorTooLong
+);
+
+/** icon and icon_color are sent together or not at all. */
+const checkIconPair = (
+  body: { icon?: string; icon_color?: string },
+  ctx: z.RefinementCtx
+) => {
+  if (body.icon !== undefined && body.icon_color === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['icon_color'],
+      message: ErrorMessage.Required,
+    });
+  }
+  if (body.icon_color !== undefined && body.icon === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['icon'],
+      message: ErrorMessage.Required,
+    });
+  }
+};
+
 // The ISO 4217 codes the runtime's Intl knows: the same data that gives each
 // currency its symbol and standard decimals, so all three always agree.
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
@@ -150,9 +189,12 @@ const createGroupSchema = z
           members.length,
         { message: ErrorMessage.MemberRepeated }
       ),
+    icon: icon.optional(),
+    icon_color: iconColor.optional(),
     idempotency_key: idempotencyKey,
   })
-  .superRefine(checkDecimalsMatch);
+  .superRefine(checkDecimalsMatch)
+  .superRefine(checkIconPair);
 
 const joinGroupSchema = z.object({
   invite_id: z.string().min(1),
@@ -269,10 +311,17 @@ const updateGroupSchema = z
     // The scale goes with the currency: required when it is sent, and not
     // accepted alone.
     currency_decimals: currencyDecimals.optional(),
+    icon: icon.optional(),
+    icon_color: iconColor.optional(),
   })
-  .refine((body) => body.name !== undefined || body.currency !== undefined, {
-    message: ErrorMessage.NothingToUpdate,
-  })
+  .refine(
+    (body) =>
+      body.name !== undefined ||
+      body.currency !== undefined ||
+      body.icon !== undefined ||
+      body.icon_color !== undefined,
+    { message: ErrorMessage.NothingToUpdate }
+  )
   .refine(
     (body) =>
       body.currency === undefined || body.currency_decimals !== undefined,
@@ -283,7 +332,8 @@ const updateGroupSchema = z
       body.currency_decimals === undefined || body.currency !== undefined,
     { message: ErrorMessage.DecimalsWithoutCurrency }
   )
-  .superRefine(checkDecimalsMatch);
+  .superRefine(checkDecimalsMatch)
+  .superRefine(checkIconPair);
 
 const getAllTransactionInGroupSchema = z.object({
   group_id: requiredId,
@@ -326,5 +376,7 @@ export {
   isSubscriptionId,
   MAX_KEY_LENGTH,
   MAX_AVATAR_LENGTH,
+  MAX_ICON_BYTES,
+  MAX_ICON_COLOR_LENGTH,
   MAX_GROUP_IDS,
 };
