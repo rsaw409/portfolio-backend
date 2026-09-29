@@ -1,3 +1,4 @@
+import cors from 'cors';
 import express from 'express';
 
 import { addRoutes } from './routes.js';
@@ -11,6 +12,9 @@ if (!process.env.ONESIGNAL_KEY) {
 }
 
 const app = express.Router();
+
+// cors middleware — all origins for now; no cookies, so no credentials
+app.use(cors({ methods: 'POST' }));
 
 addRoutes(app);
 

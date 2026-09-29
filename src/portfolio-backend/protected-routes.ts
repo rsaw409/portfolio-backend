@@ -46,7 +46,13 @@ const addRoutes = (app: Router) => {
       {
         clientID: GOOGLE_CLIENT_ID,
         clientSecret: GOOGLE_CLIENT_SECRET,
-        callbackURL: '/portfolio/google/callback',
+        // In production the frontend proxies `/api/*` to this backend, so the
+        // callback must come back through that domain for the session cookie
+        // to be first-party there. A relative URL would resolve to onrender.
+        callbackURL:
+          process.env.NODE_ENV === 'production'
+            ? 'https://portfolio.rsaw409.me/api/google/callback'
+            : '/portfolio/google/callback',
         scope: ['email', 'profile'],
       },
       function (
