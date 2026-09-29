@@ -181,7 +181,7 @@ describe('Testing Controllers', () => {
         name: 'Manali Trip',
         currency: 'inr',
         currency_decimals: 2,
-        members: ['Rohit', ' Priya '],
+        members: [{ name: 'Rohit', avatar: 'seed-r' }, ' Priya '],
         idempotency_key: 'k1',
       },
     } as any as Request;
@@ -194,7 +194,7 @@ describe('Testing Controllers', () => {
           currency_decimals: 2,
         }),
         members: [
-          row({ id: 101, name: 'Rohit', group_id: 42 }),
+          row({ id: 101, name: 'Rohit', avatar: 'seed-r', group_id: 42 }),
           row({ id: 102, name: 'Priya', group_id: 42 }),
         ],
       },
@@ -206,7 +206,7 @@ describe('Testing Controllers', () => {
       name: 'Manali Trip',
       currency: 'INR',
       currency_decimals: 2,
-      members: ['Rohit', 'Priya'],
+      members: [{ name: 'Rohit', avatar: 'seed-r' }, { name: 'Priya' }],
       idempotency_key: 'k1',
     });
     expect(crypto.encryptDeterministic).toHaveBeenCalledWith('42');
@@ -219,8 +219,8 @@ describe('Testing Controllers', () => {
       currency: 'INR',
       currency_decimals: 2,
       members: [
-        { user_id: 101, name: 'Rohit' },
-        { user_id: 102, name: 'Priya' },
+        { user_id: 101, name: 'Rohit', avatar: 'seed-r' },
+        { user_id: 102, name: 'Priya', avatar: null },
       ],
     });
   });

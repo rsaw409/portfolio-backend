@@ -52,6 +52,20 @@ const nonBlankText = z
   // abort: a blank value gets this message alone, not every later check's.
   .min(1, { error: ErrorMessage.Blank, abort: true });
 
+const MAX_AVATAR_LENGTH = 64;
+
+/** The seed the app renders a user's avatar from. */
+const avatar = nonBlankText.max(MAX_AVATAR_LENGTH, ErrorMessage.AvatarTooLong);
+
+/**
+ * A member to create with a group: a plain name, as older apps send, or
+ * { name, avatar }. Both come out as the object form.
+ */
+const member = z.preprocess(
+  (value) => (typeof value === 'string' ? { name: value } : value),
+  z.object({ name: nonBlankText, avatar: avatar.optional() })
+);
+
 // The ISO 4217 codes the runtime's Intl knows: the same data that gives each
 // currency its symbol and standard decimals, so all three always agree.
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
@@ -126,13 +140,14 @@ const createGroupSchema = z
     currency: currency.default('INR'),
     currency_decimals: currencyDecimals,
     members: z
-      .array(nonBlankText, { error: ErrorMessage.NotAList })
+      .array(member, { error: ErrorMessage.NotAList })
       .default([])
       // Case-insensitive: 'Rohit' and 'rohit' in one group are the same person
       // as far as whoever picks a payer from the list can tell.
       .refine(
-        (names) =>
-          new Set(names.map((n) => n.toLowerCase())).size === names.length,
+        (members) =>
+          new Set(members.map((m) => m.name.toLowerCase())).size ===
+          members.length,
         { message: ErrorMessage.MemberRepeated }
       ),
     idempotency_key: idempotencyKey,
@@ -146,6 +161,8 @@ const joinGroupSchema = z.object({
 const createUserSchema = z.object({
   name: z.string().min(1),
   group_id: requiredId,
+  // Optional so app versions from before avatars can still add users.
+  avatar: avatar.optional(),
 });
 
 const groupSchema = z.object({
@@ -308,5 +325,6 @@ export {
   updateGroupSchema,
   isSubscriptionId,
   MAX_KEY_LENGTH,
+  MAX_AVATAR_LENGTH,
   MAX_GROUP_IDS,
 };

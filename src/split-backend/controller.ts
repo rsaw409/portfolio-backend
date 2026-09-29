@@ -68,7 +68,11 @@ const createGroup = async (
       currency: group.get('currency'),
       currency_decimals: group.get('currency_decimals'),
       members: members.map((member) => {
-        return { user_id: member.get('id'), name: member.get('name') };
+        return {
+          user_id: member.get('id'),
+          name: member.get('name'),
+          avatar: member.get('avatar') ?? null,
+        };
       }),
     });
   } catch (error: unknown) {

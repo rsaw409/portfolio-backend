@@ -8,7 +8,7 @@ import DB from '../../../postgres.js';
 import logger from '../../../@rsaw409/logger.js';
 import { ErrorMessage } from '../../../@rsaw409/constant.js';
 import {
-  createGroupPayload,
+  createGroupInput,
   getGroupsPayload,
   updateGroupPayload,
   GroupSummary,
@@ -47,7 +47,7 @@ const findExistingGroup = async (
  * group without the members the client asked for.
  */
 const createGroup = async (
-  payload: createGroupPayload
+  payload: createGroupInput
 ): Promise<IdempotentResult<GroupWithMembers>> => {
   const idempotencyKey = payload.idempotency_key;
   try {
@@ -67,8 +67,8 @@ const createGroup = async (
       );
 
       const members = await sequelize.models.User.bulkCreate(
-        (payload.members ?? []).map((name) => {
-          return { name, group_id: group.get('id') };
+        (payload.members ?? []).map(({ name, avatar }) => {
+          return { name, avatar, group_id: group.get('id') };
         }),
         { transaction: t }
       );
@@ -230,7 +230,7 @@ returning id, name, currency, currency_decimals`,
 // sum() over BIGINT yields NUMERIC, which node-postgres returns as a string;
 // casting back keeps balances a number of minor units.
 const getOverviewDataInGroup = async ({ group_id }: { group_id: number }) => {
-  const query = `select A.name, A.id as user_id, 
+  const query = `select A.name, A.id as user_id, A.avatar,
 (coalesce(B.total_pos,0) - coalesce(C.total_neg,0)) as balances, 
 coalesce(number_of_transactions, 0) as number_of_transactions, 
 coalesce(number_of_payments,0) as number_of_payments,

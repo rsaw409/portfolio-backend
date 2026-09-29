@@ -23,6 +23,7 @@ const createUser = async (payload: User) => {
   }
   return sequelize.models.User.create({
     name: payload.name,
+    avatar: payload.avatar,
     group_id: payload.group_id,
   });
 };

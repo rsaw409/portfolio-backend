@@ -8,6 +8,10 @@ const createUserModel = (sequelize: Sequelize, schema: string) => {
         type: DataTypes.STRING,
         allowNull: false,
       },
+      avatar: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       group_id: {
         type: DataTypes.INTEGER,
         references: {

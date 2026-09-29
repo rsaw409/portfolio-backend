@@ -14,6 +14,7 @@ const {
   updateGroupSchema,
   MAX_KEY_LENGTH,
   MAX_GROUP_IDS,
+  MAX_AVATAR_LENGTH,
 } = await import('../../../../src/split-backend/utils/validator.js');
 const { ErrorMessage } = await import('../../../../src/@rsaw409/constant.js');
 
@@ -207,7 +208,7 @@ describe('TEST createGroup payload', () => {
       name: 'Manali Trip',
       currency: 'INR',
       currency_decimals: 2,
-      members: ['Rohit', 'Priya'],
+      members: [{ name: 'Rohit' }, { name: 'Priya' }],
       idempotency_key: 'k',
     });
   });
@@ -261,13 +262,53 @@ describe('TEST createGroup payload', () => {
   test('rejects blank and repeated member names', () => {
     expect(() =>
       parse(createGroupSchema, { name: 'a', members: ['Rohit', '  '] })
-    ).toThrow('members.1: must not be blank');
+    ).toThrow('members.1.name: must not be blank');
     expect(() =>
       parse(createGroupSchema, { name: 'a', members: ['Rohit', 'rohit '] })
     ).toThrow('members: must not repeat a name');
     expect(() =>
       parse(createGroupSchema, { name: 'a', members: 'Rohit' })
     ).toThrow('members: must be a list of names');
+  });
+
+  test('accepts members as { name, avatar } objects mixed with names', () => {
+    expect(
+      parse(createGroupSchema, {
+        name: 'a',
+        currency_decimals: 2,
+        members: [
+          { name: ' Rohit ', avatar: ' seed-1 ' },
+          'Priya',
+          { name: 'Aman' },
+        ],
+      })
+    ).toHaveProperty('members', [
+      { name: 'Rohit', avatar: 'seed-1' },
+      { name: 'Priya' },
+      { name: 'Aman' },
+    ]);
+  });
+
+  test('rejects a blank or oversized member avatar, and repeats across forms', () => {
+    const base = { name: 'a', currency_decimals: 2 };
+    expect(() =>
+      parse(createGroupSchema, {
+        ...base,
+        members: [{ name: 'Rohit', avatar: '  ' }],
+      })
+    ).toThrow('members.0.avatar: must not be blank');
+    expect(() =>
+      parse(createGroupSchema, {
+        ...base,
+        members: [{ name: 'Rohit', avatar: 'x'.repeat(MAX_AVATAR_LENGTH + 1) }],
+      })
+    ).toThrow(`members.0.avatar: ${ErrorMessage.AvatarTooLong}`);
+    expect(() =>
+      parse(createGroupSchema, {
+        ...base,
+        members: ['Rohit', { name: 'rohit', avatar: 's' }],
+      })
+    ).toThrow('members: must not repeat a name');
   });
 
   test('allows a group with one member or none', () => {
@@ -277,7 +318,7 @@ describe('TEST createGroup payload', () => {
         currency_decimals: 2,
         members: ['Rohit'],
       })
-    ).toHaveProperty('members', ['Rohit']);
+    ).toHaveProperty('members', [{ name: 'Rohit' }]);
     expect(
       parse(createGroupSchema, { name: 'a', currency_decimals: 2, members: [] })
     ).toHaveProperty('members', []);
@@ -455,6 +496,29 @@ describe('TEST required fields', () => {
     expect(() => parse(createGroupSchema, {})).toThrow(/name/);
     expect(() => parse(groupSchema, {})).toThrow(/group_id/);
     expect(() => parse(createUserSchema, { name: 'a' })).toThrow(/group_id/);
+  });
+
+  test('createUser takes an optional avatar, non-blank and bounded', () => {
+    expect(
+      parse(createUserSchema, { name: 'a', group_id: 3, avatar: ' seed ' })
+    ).toEqual({ name: 'a', group_id: 3, avatar: 'seed' });
+    expect(
+      parse(createUserSchema, {
+        name: 'a',
+        group_id: 3,
+        avatar: 'x'.repeat(MAX_AVATAR_LENGTH),
+      })
+    ).toHaveProperty('avatar', 'x'.repeat(MAX_AVATAR_LENGTH));
+    expect(() =>
+      parse(createUserSchema, { name: 'a', group_id: 3, avatar: ' ' })
+    ).toThrow('avatar: must not be blank');
+    expect(() =>
+      parse(createUserSchema, {
+        name: 'a',
+        group_id: 3,
+        avatar: 'x'.repeat(MAX_AVATAR_LENGTH + 1),
+      })
+    ).toThrow(`avatar: ${ErrorMessage.AvatarTooLong}`);
   });
 
   test('coerces numeric strings to numbers', () => {

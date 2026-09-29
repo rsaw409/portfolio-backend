@@ -11,6 +11,7 @@ const ErrorMessage = {
   Blank: 'must not be blank',
   NotAList: 'must be a list of names',
   CurrencyInvalid: 'must be a 3-letter ISO 4217 code, e.g. INR',
+  AvatarTooLong: 'must be at most 64 characters',
   MemberRepeated: 'must not repeat a name',
   NotASubscriptionId: 'must be a OneSignal subscription id (a UUID)',
   NotAnIdList: 'must be a list of group ids',

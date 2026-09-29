@@ -85,7 +85,11 @@ const trip = {
   name: 'Manali Trip',
   currency: 'INR',
   currency_decimals: 2,
-  members: ['Rohit', 'Priya', 'Aman'],
+  members: [
+    { name: 'Rohit', avatar: 'seed-r' },
+    { name: 'Priya' },
+    { name: 'Aman' },
+  ],
 };
 
 const names = (rows: Row[]) => rows.map((r) => r.get('name'));
@@ -104,6 +108,11 @@ describe('TEST idempotent createGroup', () => {
     expect(replayed).toBe(false);
     expect(result.group.get('currency')).toBe('INR');
     expect(names(result.members)).toEqual(['Rohit', 'Priya', 'Aman']);
+    expect(result.members.map((m) => m.get('avatar'))).toEqual([
+      'seed-r',
+      undefined,
+      undefined,
+    ]);
     expect(
       result.members.every((m) => m.get('group_id') === result.group.get('id'))
     ).toBe(true);

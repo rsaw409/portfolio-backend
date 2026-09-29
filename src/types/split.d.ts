@@ -1,12 +1,24 @@
+interface GroupMember {
+  name: string;
+  // Seed the app renders the avatar from.
+  avatar?: string;
+}
+
 interface createGroupPayload {
   name: string;
   // ISO 4217; defaults to INR.
   currency?: string;
   // Decimals of the currency's minor unit (2 for INR): the scale of amounts.
   currency_decimals: number;
-  // Names of the users to create in the group along with it.
-  members?: string[];
+  // The users to create in the group along with it. Plain names are what app
+  // versions from before avatars send; the validator turns them into objects.
+  members?: Array<string | GroupMember>;
   idempotency_key?: string;
+}
+
+// createGroupPayload as the validator returns it.
+interface createGroupInput extends Omit<createGroupPayload, 'members'> {
+  members?: GroupMember[];
 }
 
 interface joinGroupPayload {
@@ -16,6 +28,7 @@ interface joinGroupPayload {
 interface createUserPayload {
   group_id: number;
   name: string;
+  avatar?: string;
 }
 
 interface saveTransactionPayload {
@@ -74,6 +87,7 @@ interface GroupSummary {
 interface User {
   name: string;
   group_id: number;
+  avatar?: string;
 }
 
 interface IdempotentResult<T> {
@@ -91,7 +105,9 @@ interface IdempotentBatchResult<T> {
 }
 
 export {
+  GroupMember,
   createGroupPayload,
+  createGroupInput,
   joinGroupPayload,
   createUserPayload,
   saveTransactionPayload,
