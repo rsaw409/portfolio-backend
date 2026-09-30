@@ -18,9 +18,14 @@ const limiter = rateLimit({
   limit: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes).
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    return req.path.includes('health');
-  },
+});
+
+// Separate instance so split keeps its own counters, apart from portfolio's.
+const splitLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  limit: 1000, // Limit each IP to 1000 requests per `window` (here, per 10 minutes).
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 const main = async () => {
@@ -39,7 +44,7 @@ const main = async () => {
 
   app.use('/portfolio', limiter, portfolioMain);
 
-  app.use('/split', limiter, splitMain);
+  app.use('/split', splitLimiter, splitMain);
 
   ticToeMain(http, '/tictoe');
 
@@ -47,7 +52,8 @@ const main = async () => {
     res.status(200).send({ message: 'Server is Running.' });
   });
 
-  app.use('/db_health', async (req: Request, res: Response) => {
+  // /health stays unlimited for uptime checks; /db_health hits the DB.
+  app.use('/db_health', limiter, async (req: Request, res: Response) => {
     await DB.getSequelize().authenticate();
     return res.status(200).send({ message: 'DB is Running.' });
   });

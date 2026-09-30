@@ -22,7 +22,7 @@ Live at: https://portfolio-rsaw409.onrender.com
 - **Object storage / auth:** Supabase (`@supabase/supabase-js`) — for portfolio profile pictures
 - **File uploads:** multer (memory storage, 2MB cap, image-only whitelist)
 - **Validation:** express-validator (portfolio), zod (split)
-- **Security middleware:** express-rate-limit (100 req / 15 min, skips `/health`), lusca CSRF, helmet-style cookie hardening
+- **Security middleware:** express-rate-limit per IP, one limiter per app (portfolio 100 req / 15 min, also applied to `/db_health` and sharing its counter; split 1000 req / 10 min; `/health` and `/tictoe` are not limited), lusca CSRF, helmet-style cookie hardening
 - **Logging:** winston + `response-time` request logger (ignores `/health`, `/db_health`)
 - **Encryption:** Node `crypto` AES-256-GCM for invite IDs
 - **Push:** OneSignal REST API
