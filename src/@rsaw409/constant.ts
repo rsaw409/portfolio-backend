@@ -19,7 +19,10 @@ const ErrorMessage = {
   NotAnIdList: 'must be a list of group ids',
   TooManyGroups: 'must list at most 500 groups',
   NothingToUpdate: 'send name, currency or icon to update',
+  NothingToUpdateUser: 'send name or avatar to update',
   GroupNotFound: 'No Group Found',
+  UserNotFound: 'No User Found',
+  UserExists: 'User Already Exists',
   CurrencyLocked:
     'currency can only be changed before the group has any expenses or payments',
   GroupBusy: 'the group is busy right now, try again',

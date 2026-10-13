@@ -7,6 +7,7 @@ vi.mock('../../../src/split-backend/controller.js', () => {
     joinGroup: vi.fn(),
     createGroup: vi.fn(),
     createUser: vi.fn(),
+    updateUser: vi.fn(),
     saveTransaction: vi.fn(),
     savePayment: vi.fn(),
     getAllUsersInGroup: vi.fn(),
@@ -19,8 +20,13 @@ vi.mock('../../../src/split-backend/controller.js', () => {
   };
 });
 
-const { getAllUsersInGroup, registerDevice, getGroups, updateGroup } =
-  await import('../../../src/split-backend/controller.js');
+const {
+  getAllUsersInGroup,
+  registerDevice,
+  getGroups,
+  updateGroup,
+  updateUser,
+} = await import('../../../src/split-backend/controller.js');
 
 const { addRoutes } = await import('../../../src/split-backend/routes.js');
 
@@ -78,6 +84,19 @@ describe('TEST routes', () => {
     addRoutes(app);
     const response = await request(app).post('/updateGroup');
     expect(updateGroup).toHaveBeenCalled();
+    expect(response.status).toBe(200);
+  });
+
+  test('test express routes - updateUser', async () => {
+    (updateUser as Mock).mockImplementation(
+      async (_req: Request, res: Response) => {
+        return res.status(200).send({});
+      }
+    );
+    const app = express();
+    addRoutes(app);
+    const response = await request(app).post('/updateUser');
+    expect(updateUser).toHaveBeenCalled();
     expect(response.status).toBe(200);
   });
 

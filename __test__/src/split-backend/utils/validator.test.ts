@@ -4,6 +4,7 @@ const {
   parse,
   createGroupSchema,
   createUserSchema,
+  updateUserSchema,
   groupSchema,
   saveTransactionSchema,
   savePaymentSchema,
@@ -489,6 +490,42 @@ describe('TEST updateGroup payload', () => {
     expect(() => parse(updateGroupSchema, { name: 'Goa' })).toThrow(/group_id/);
     expect(() => parse(updateGroupSchema, { group_id: 7 })).toThrow(
       ErrorMessage.NothingToUpdate
+    );
+  });
+});
+
+describe('TEST updateUser', () => {
+  test('passes on only the fields sent, trimmed', () => {
+    expect(parse(updateUserSchema, { user_id: '3', name: ' Rohit ' })).toEqual({
+      user_id: 3,
+      name: 'Rohit',
+    });
+    expect(parse(updateUserSchema, { user_id: 3, avatar: ' seed ' })).toEqual({
+      user_id: 3,
+      avatar: 'seed',
+    });
+  });
+
+  test('holds name and avatar to the createUser rules', () => {
+    expect(() => parse(updateUserSchema, { user_id: 3, name: ' ' })).toThrow(
+      'name: must not be blank'
+    );
+    expect(() => parse(updateUserSchema, { user_id: 3, avatar: ' ' })).toThrow(
+      'avatar: must not be blank'
+    );
+    expect(() =>
+      parse(updateUserSchema, {
+        user_id: 3,
+        avatar: 'x'.repeat(MAX_AVATAR_LENGTH + 1),
+      })
+    ).toThrow(`avatar: ${ErrorMessage.AvatarTooLong}`);
+  });
+
+  test('needs a user_id and something to change', () => {
+    expect(() => parse(updateUserSchema, { name: 'Rohit' })).toThrow(/user_id/);
+    // group_id is not something a user update can change: it is dropped.
+    expect(() => parse(updateUserSchema, { user_id: 3, group_id: 9 })).toThrow(
+      ErrorMessage.NothingToUpdateUser
     );
   });
 });

@@ -32,7 +32,7 @@ vi.mock('../../../../../src/postgres.js', () => {
 
 const { getGroup, createGroup, getOverviewDataInGroup } =
   await import('../../../../../src/split-backend/db/queries/group.js');
-const { getAllUsersInGroup, createUser } =
+const { getAllUsersInGroup, createUser, updateUser } =
   await import('../../../../../src/split-backend/db/queries/user.js');
 const { saveTransaction, savePayment, getAllTransactionInGroup, savePayments } =
   await import('../../../../../src/split-backend/db/queries/transaction.js');
@@ -64,6 +64,12 @@ describe('TEST split-backend queries', () => {
 
   test('TEST createUser', async () => {
     await expect(createUser({ name: 'test', group_id: 1 })).rejects.toThrow(
+      'DB not initialized'
+    );
+  });
+
+  test('TEST updateUser', async () => {
+    await expect(updateUser({ user_id: 1, name: 'test' })).rejects.toThrow(
       'DB not initialized'
     );
   });

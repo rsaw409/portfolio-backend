@@ -3,6 +3,7 @@ import {
   joinGroup,
   createGroup,
   createUser,
+  updateUser,
   saveTransaction,
   savePayment,
   getAllUsersInGroup,
@@ -25,6 +26,8 @@ const addRoutes = (app: Router) => {
   app.post('/updateGroup', updateGroup);
 
   app.post('/createUser', createUser);
+
+  app.post('/updateUser', updateUser);
 
   // Which groups a device's notifications come from.
   app.post('/registerDevice', registerDevice);

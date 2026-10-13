@@ -1,11 +1,18 @@
 import { vi, describe, test, expect } from 'vitest';
 
-vi.mock('sequelize', () => {
+vi.mock('sequelize', async (importOriginal) => {
+  // The real where-builders, so createUser's case-insensitive lookup can run.
+  const { Op, col, fn, where } =
+    await importOriginal<typeof import('sequelize')>();
   return {
     QueryTypes: {
       SELECT: 'SELECT',
     },
     UniqueConstraintError: class extends Error {},
+    Op,
+    col,
+    fn,
+    where,
   };
 });
 
@@ -46,10 +53,7 @@ vi.mock('../../../../../src/postgres.js', () => {
               findOne: vi.fn((p) => {
                 expect(p).toHaveProperty(
                   'where',
-                  expect.objectContaining({
-                    group_id: expect.any(Number),
-                    name: expect.any(String),
-                  })
+                  expect.objectContaining({ group_id: expect.any(Number) })
                 );
                 return false;
               }),

@@ -201,11 +201,26 @@ const joinGroupSchema = z.object({
 });
 
 const createUserSchema = z.object({
-  name: z.string().min(1),
+  // Trimmed, so ' Rohit' cannot slip past the duplicate check against 'Rohit'.
+  name: nonBlankText,
   group_id: requiredId,
   // Optional so app versions from before avatars can still add users.
   avatar: avatar.optional(),
 });
+
+/**
+ * Only the fields sent are changed, under the same rules as createUser; a
+ * request that would change nothing is rejected rather than silently ignored.
+ */
+const updateUserSchema = z
+  .object({
+    user_id: requiredId,
+    name: nonBlankText.optional(),
+    avatar: avatar.optional(),
+  })
+  .refine((body) => body.name !== undefined || body.avatar !== undefined, {
+    message: ErrorMessage.NothingToUpdateUser,
+  });
 
 const groupSchema = z.object({
   group_id: requiredId,
@@ -365,6 +380,7 @@ export {
   createGroupSchema,
   joinGroupSchema,
   createUserSchema,
+  updateUserSchema,
   groupSchema,
   saveTransactionSchema,
   savePaymentSchema,

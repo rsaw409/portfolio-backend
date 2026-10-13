@@ -16,6 +16,7 @@ import {
 } from './db/queries/transaction.js';
 import {
   createUser as createUserInDB,
+  updateUser as updateUserInDB,
   getAllUsersInGroup as getAllUsersInGroupFromDB,
 } from './db/queries/user.js';
 import { registerDevice as registerDeviceInDB } from './db/queries/device.js';
@@ -27,6 +28,7 @@ import {
   createGroupSchema,
   joinGroupSchema,
   createUserSchema,
+  updateUserSchema,
   groupSchema,
   saveTransactionSchema,
   savePaymentSchema,
@@ -39,6 +41,7 @@ import {
 import {
   createGroupPayload,
   createUserPayload,
+  updateUserPayload,
   getAllTransactionInGroupPayload,
   getGroupsPayload,
   GroupSummary,
@@ -231,6 +234,43 @@ const createUser = async (
     res.status(400).send({ message: message });
   }
 };
+
+/**
+ * Renames a user or changes their avatar, returning the user as createUser
+ * does, and tells the group's devices when the name actually changed. An
+ * avatar change alone is not pushed. Either way, members' apps pick the change
+ * up through getOverviewDataInGroup, which their member lists are built from.
+ */
+const updateUser = async (
+  req: Request<{}, {}, updateUserPayload>,
+  res: Response
+) => {
+  try {
+    const updated = await updateUserInDB(parse(updateUserSchema, req.body));
+    if (!updated) {
+      throw new Error(ErrorMessage.UserNotFound);
+    }
+    const { user, previous } = updated;
+
+    const name = user.get('name') as string;
+    if (name !== previous.name) {
+      send_push_notification({
+        user_id: user.get('id') as number,
+        headings: 'Member Renamed',
+        title: `"${previous.name}" is now "${name}"`,
+      });
+    }
+
+    return res.status(200).send(user);
+  } catch (error: unknown) {
+    logger.error(error);
+    let message = ErrorMessage.Unknown;
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    res.status(400).send({ message: message });
+  }
+};
 const saveTransaction = async (
   req: Request<{}, {}, saveTransactionPayload>,
   res: Response
@@ -400,6 +440,7 @@ export {
   joinGroup,
   createGroup,
   createUser,
+  updateUser,
   saveTransaction,
   savePayment,
   getAllUsersInGroup,

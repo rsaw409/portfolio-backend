@@ -34,6 +34,13 @@ interface createUserPayload {
   avatar?: string;
 }
 
+interface updateUserPayload {
+  user_id: number;
+  // Each is optional; only the fields sent are changed.
+  name?: string;
+  avatar?: string;
+}
+
 interface saveTransactionPayload {
   // All amounts are whole minor units of the group's currency (paise for INR).
   totalAmount: number;
@@ -119,6 +126,7 @@ export {
   createGroupInput,
   joinGroupPayload,
   createUserPayload,
+  updateUserPayload,
   saveTransactionPayload,
   savePaymentPayload,
   getAllTransactionInGroupPayload,

@@ -23,6 +23,7 @@ vi.mock('../../../src/split-backend/db/queries/group.js', () => {
 vi.mock('../../../src/split-backend/db/queries/user.js', () => {
   return {
     createUser: vi.fn(),
+    updateUser: vi.fn(),
     getAllUsersInGroup: vi.fn(),
   };
 });
@@ -67,6 +68,7 @@ const {
 
 const {
   createUser: createUserInDB,
+  updateUser: updateUserInDB,
   getAllUsersInGroup: getAllUsersInGroupFromDB,
 } = await import('../../../src/split-backend/db/queries/user.js');
 
@@ -89,6 +91,7 @@ const {
   createGroup,
   joinGroup,
   createUser,
+  updateUser,
   getAllUsersInGroup,
   getAllTransactionInGroup,
   getOverviewDataInGroup,
@@ -310,6 +313,93 @@ describe('Testing Controllers', () => {
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.send).toHaveBeenCalledWith({ id: 1 });
+  });
+
+  test('updateUser passes on the parsed fields and returns the user', async () => {
+    let req = {
+      body: { user_id: '3', name: ' Rohit S ', group_id: 9 },
+    } as any as Request;
+    const user = row({ id: 3, group_id: 7, name: 'Rohit S', avatar: null });
+    (updateUserInDB as Mock).mockResolvedValue({
+      user,
+      previous: { name: 'Rohit', avatar: null },
+    });
+    await updateUser(req, res);
+    expect(updateUserInDB).toHaveBeenCalledWith({
+      user_id: 3,
+      name: 'Rohit S',
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.send).toHaveBeenCalledWith(user);
+  });
+
+  test("updateUser notifies the group's devices of a rename", async () => {
+    let req = { body: { user_id: 3, name: 'Rohit S' } } as any as Request;
+    (updateUserInDB as Mock).mockResolvedValue({
+      user: row({ id: 3, group_id: 7, name: 'Rohit S', avatar: null }),
+      previous: { name: 'Rohit', avatar: null },
+    });
+    await updateUser(req, res);
+    // By user_id, so the group is the renamed user's own.
+    expect(send_push_notification).toHaveBeenCalledWith({
+      user_id: 3,
+      headings: 'Member Renamed',
+      title: '"Rohit" is now "Rohit S"',
+    });
+  });
+
+  test('updateUser sends no notification for an avatar change', async () => {
+    let req = { body: { user_id: 3, avatar: 'new' } } as any as Request;
+    (updateUserInDB as Mock).mockResolvedValue({
+      user: row({ id: 3, group_id: 7, name: 'Rohit', avatar: 'new' }),
+      previous: { name: 'Rohit', avatar: 'old' },
+    });
+    await updateUser(req, res);
+    expect(send_push_notification).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  test('updateUser sends no notification when the name is unchanged', async () => {
+    let req = { body: { user_id: 3, name: 'Rohit' } } as any as Request;
+    (updateUserInDB as Mock).mockResolvedValue({
+      user: row({ id: 3, group_id: 7, name: 'Rohit', avatar: null }),
+      previous: { name: 'Rohit', avatar: null },
+    });
+    await updateUser(req, res);
+    expect(send_push_notification).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  test('updateUser reports an unknown user', async () => {
+    let req = { body: { user_id: 404, avatar: 'seed' } } as any as Request;
+    (updateUserInDB as Mock).mockResolvedValue(undefined);
+    await updateUser(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: ErrorMessage.UserNotFound,
+    });
+  });
+
+  test('updateUser rejects a request that changes nothing', async () => {
+    let req = { body: { user_id: 3 } } as any as Request;
+    await updateUser(req, res);
+    expect(updateUserInDB).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: ErrorMessage.NothingToUpdateUser,
+    });
+  });
+
+  test('updateUser reports a name taken in the group', async () => {
+    let req = { body: { user_id: 3, name: 'ROHIT' } } as any as Request;
+    (updateUserInDB as Mock).mockRejectedValue(
+      new Error(ErrorMessage.UserExists)
+    );
+    await updateUser(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.send).toHaveBeenCalledWith({
+      message: ErrorMessage.UserExists,
+    });
   });
 
   test('getAllUsersInGroup should throw error for invalid payload', async () => {
